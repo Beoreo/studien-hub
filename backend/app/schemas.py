@@ -24,9 +24,15 @@ class LvaOut(BaseModel):
     anzahl_videos: int = 0
     video_dauer_sekunden: int = 0  # Summe der bekannten Dauern
     videos_ohne_dauer: int = 0
+    ects: float | None = None
+    lernparameter: dict[str, float] | None = None  # mit Standardwerten ergänzt
+    korrektur_faktor: float = 1.0  # aus selbst eingetragenen Lernzeiten gelernt
+    korrektur_rueckmeldungen: int = 0
 
 
 class LvaUpdate(BaseModel):
+    ects: float | None = Field(None, ge=0, le=60)
+    lernparameter: dict[str, float] | None = None  # nur geänderte Werte; leeres Objekt = Standard
     titel: str | None = None
     kurzname: str | None = None
     farbe: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
@@ -111,8 +117,15 @@ class ArbeitsregelSchema(BaseModel):
     voller_unitag_stunden: float = Field(6, ge=0, le=24)
     min_freie_tage: int = Field(1, ge=0, le=7)
     gewichte: GewichteSchema = Field(default_factory=GewichteSchema)
+    lern_min_block_minuten: int = Field(45, ge=15, le=8 * 60)
+    lern_max_block_minuten: int = Field(120, ge=15, le=8 * 60)
+    lern_tage: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4, 5])
+    ects_warnschwelle: float = Field(0.5, gt=0, le=5)
 
-    @field_validator("max_tag_stunden", "lernfenster_minuten", "voller_unitag_stunden", "min_freie_tage", mode="before")
+    @field_validator(
+        "max_tag_stunden", "lernfenster_minuten", "voller_unitag_stunden", "min_freie_tage",
+        "lern_min_block_minuten", "lern_max_block_minuten", "lern_tage", "ects_warnschwelle", mode="before",
+    )
     @classmethod
     def _null_als_standard(cls, wert, info):
         # Regeln aus der Zeit vor diesen Spalten können NULL enthalten
@@ -128,7 +141,7 @@ class ArbeitsregelSchema(BaseModel):
     def _null_als_leer(cls, wert):
         return wert or []  # Regeln aus der Zeit vor dieser Spalte haben NULL
 
-    @field_validator("tage", "bevorzugte_tage")
+    @field_validator("tage", "bevorzugte_tage", "lern_tage")
     @classmethod
     def _wochentage(cls, werte: list[int]) -> list[int]:
         if any(w < 0 or w > 6 for w in werte):
@@ -139,6 +152,8 @@ class ArbeitsregelSchema(BaseModel):
     def _plausibel(self):
         if self.min_block_minuten > self.max_block_minuten:
             raise ValueError("Mindestlänge darf nicht größer als die Maximallänge sein")
+        if self.lern_min_block_minuten > self.lern_max_block_minuten:
+            raise ValueError("Mindestlänge eines Lernblocks darf nicht größer als die Maximallänge sein")
         if self.fruehester_beginn >= self.spaetestes_ende:
             raise ValueError("Frühester Beginn muss vor dem spätesten Ende liegen")
         return self
@@ -217,10 +232,55 @@ class GeopferterTermin(BaseModel):
     ende: datetime
 
 
+class LernblockOut(BaseModel):
+    id: int
+    lva_id: int
+    lva_name: str
+    lva_farbe: str
+    thema: str
+    start: datetime
+    ende: datetime
+    status: str
+    erledigt: bool
+    tatsaechliche_minuten: int | None
+    geplante_minuten: int
+    notiz: str | None
+    zuteilung: dict[str, int]
+
+
+class LernblockUpdate(BaseModel):
+    start: datetime | None = None
+    ende: datetime | None = None
+    status: str | None = Field(None, pattern="^(vorschlag|bestaetigt)$")
+    erledigt: bool | None = None
+    tatsaechliche_minuten: int | None = Field(None, ge=0, le=24 * 60)
+    notiz: str | None = None
+
+
+class WochenbedarfOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    lva_id: int
+    lva_name: str
+    unterlagen_minuten: int
+    praesenz_minuten: int
+    gesamt_minuten: int
+    soll_minuten: int | None
+    korrektur: float
+    unterlagen: list[dict]
+    warnung: str | None
+
+
 class VorschlagOut(BaseModel):
     woche: date
     punktzahl: float
     begruendungen: list[str]
+    lernbloecke: list[LernblockOut] = []
+    lern_stunden: float = 0
+    lern_offen_stunden: float = 0
+    konflikte: list[str] = []
+    lernbedarf: list[WochenbedarfOut] = []
+    ects_warnungen: list[str] = []
     soll_stunden: float
     verplant_stunden: float
     fehlende_stunden: float

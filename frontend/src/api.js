@@ -68,6 +68,9 @@ export const api = {
   vorschlag: (woche) => anfrage(`/api/arbeit/vorschlag?woche=${woche}`, { methode: 'POST' }),
   bestaetigen: (woche) => anfrage(`/api/arbeit/bestaetigen?woche=${woche}`, { methode: 'POST' }),
   verwerfen: (woche) => anfrage(`/api/arbeit/verwerfen?woche=${woche}`, { methode: 'POST' }),
+  lernBlockAendern: (id, daten) => anfrage(`/api/lernen/bloecke/${id}`, { methode: 'PATCH', daten }),
+  lernBlockLoeschen: (id) => anfrage(`/api/lernen/bloecke/${id}`, { methode: 'DELETE' }),
+  lernBedarf: (woche) => anfrage(`/api/lernen/bedarf?woche=${woche}`),
 
   tuwelStatus: () => anfrage('/api/tuwel/status'),
   tuwelEinrichtung: () => anfrage('/api/tuwel/einrichtung'),
@@ -76,6 +79,7 @@ export const api = {
   tuwelKursZuordnen: (id, daten) => anfrage(`/api/tuwel/kurse/${id}`, { methode: 'PATCH', daten }),
   tuwelDokumente: () => anfrage('/api/tuwel/dokumente'),
   dokumentUrl: (id) => `/api/tuwel/dokumente/${id}/datei`,
+  dokumentLernzeit: (id, lern_minuten) => anfrage(`/api/tuwel/dokumente/${id}`, { methode: 'PATCH', daten: { lern_minuten } }),
 
   tissEinstellungen: () => anfrage('/api/tiss/einstellungen'),
   tissEinstellungenSpeichern: (daten) => anfrage('/api/tiss/einstellungen', { methode: 'PUT', daten }),

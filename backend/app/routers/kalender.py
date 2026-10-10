@@ -3,13 +3,14 @@
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_session
 from ..feiertage import feiertage, freie_tage_expandieren
 from ..export import als_csv, als_ical, als_pdf, sammle_eintraege
 from ..filter import Filter, arbeitsbloecke_filtern, filter_aus_anfrage, termine_filtern
-from ..models import STATUS_VORSCHLAG, Arbeitsblock, Termin
+from ..models import LERN_VORSCHLAG, STATUS_VORSCHLAG, Arbeitsblock, Lernblock, Termin
 from ..planung_service import lade_regel
 
 router = APIRouter(prefix="/api", tags=["Kalender und Export"])
@@ -101,12 +102,50 @@ def freie_tage_events(session: Session, f: Filter) -> list[dict]:
     return events
 
 
+def lernblock_event(b: Lernblock) -> dict:
+    vorschlag = b.status == LERN_VORSCHLAG
+    return {
+        "id": f"l{b.id}",
+        "title": ("Vorschlag: " if vorschlag else "") + f"Lernen {b.lva.kurzname or b.lva.titel}",
+        "start": b.start.isoformat(),
+        "end": b.ende.isoformat(),
+        "backgroundColor": b.lva.farbe,
+        "borderColor": b.lva.farbe,
+        "editable": not b.erledigt,
+        "classNames": ["lernen"] + (["vorschlag"] if vorschlag else []) + (["erledigt"] if b.erledigt else []),
+        "extendedProps": {
+            "art": "lernen",
+            "lernblockId": b.id,
+            "lvaId": b.lva_id,
+            "status": b.status,
+            "thema": b.thema,
+            "erledigt": b.erledigt,
+        },
+    }
+
+
+def lernbloecke_filtern(session: Session, f: Filter) -> list[Lernblock]:
+    if f.arbeit == "nur":
+        return []
+    abfrage = select(Lernblock).order_by(Lernblock.start)
+    if f.von:
+        abfrage = abfrage.where(Lernblock.ende > f.von)
+    if f.bis:
+        abfrage = abfrage.where(Lernblock.start < f.bis)
+    if f.lva_ids:
+        abfrage = abfrage.where(Lernblock.lva_id.in_(f.lva_ids))
+    if not f.vorschlaege:
+        abfrage = abfrage.where(Lernblock.status != LERN_VORSCHLAG)
+    return list(session.scalars(abfrage))
+
+
 @router.get("/kalender")
 def kalender(f: Filter = Depends(filter_aus_anfrage), session: Session = Depends(get_session)) -> list[dict]:
     return (
         freie_tage_events(session, f)
         + [termin_event(t) for t in termine_filtern(session, f)]
         + [block_event(b) for b in arbeitsbloecke_filtern(session, f)]
+        + [lernblock_event(b) for b in lernbloecke_filtern(session, f)]
     )
 
 

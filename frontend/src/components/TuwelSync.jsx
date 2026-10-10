@@ -160,7 +160,29 @@ function KursZuordnung({ kurse, lvas, onGeaendert, setFehler }) {
   )
 }
 
-function Unterlagen({ dokumente, lvas }) {
+// Lernzeit einer Unterlage: leer = Schätzung, Zahl = eigene Minuten, 0 = nicht lernen
+function LernzeitFeld({ dokument, onGeaendert }) {
+  const speichern = (e) => {
+    const wert = e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value)))
+    if (wert !== dokument.lern_minuten) api.dokumentLernzeit(dokument.id, wert).then(onGeaendert)
+  }
+  return (
+    <span className="lernzeit" title={`Schätzung: ${dokument.lern_minuten_geschaetzt} min`}>
+      <input
+        type="number"
+        min="0"
+        step="5"
+        key={dokument.lern_minuten ?? 'auto'}
+        defaultValue={dokument.lern_minuten ?? ''}
+        placeholder={String(dokument.lern_minuten_geschaetzt)}
+        onBlur={speichern}
+      />{' '}
+      min{dokument.lern_minuten === 0 && <span className="hinweis"> · nicht lernen</span>}
+    </span>
+  )
+}
+
+function Unterlagen({ dokumente, lvas, onGeaendert }) {
   const nachLva = useMemo(() => {
     const gruppen = new Map()
     for (const d of dokumente) {
@@ -202,6 +224,7 @@ function Unterlagen({ dokumente, lvas }) {
                     <th>Sync</th>
                     <th>Abschnitt</th>
                     <th>Typ</th>
+                    <th title="Geschätzte Lernzeit; eigene Minuten eintragen, 0 = nicht lernen">Lernzeit</th>
                     <th />
                   </tr>
                 </thead>
@@ -219,7 +242,13 @@ function Unterlagen({ dokumente, lvas }) {
                       </td>
                       <td className="hinweis">{zeit(d.sync_am)}</td>
                       <td className="hinweis">{d.abschnitt}</td>
-                      <td>{TYP_NAME[d.typ] || d.typ}</td>
+                      <td>
+                        {TYP_NAME[d.typ] || d.typ}
+                        {d.seiten ? <span className="hinweis"> · {d.seiten} S.</span> : null}
+                      </td>
+                      <td>
+                        <LernzeitFeld dokument={d} onGeaendert={onGeaendert} />
+                      </td>
                       <td className="hinweis rechts">{groesse(d.groesse)}</td>
                     </tr>
                   ))}
@@ -236,6 +265,7 @@ function Unterlagen({ dokumente, lvas }) {
                       <th>Erschienen</th>
                       <th>Sync</th>
                       <th>Dauer</th>
+                      <th title="Geschätzte Lernzeit; eigene Minuten eintragen, 0 = nicht lernen">Lernzeit</th>
                       <th>Abschnitt</th>
                     </tr>
                   </thead>
@@ -258,6 +288,9 @@ function Unterlagen({ dokumente, lvas }) {
                         </td>
                         <td className="hinweis">{zeit(v.sync_am)}</td>
                         <td>{laufzeit(v.dauer_sekunden) || <span className="hinweis">unbekannt</span>}</td>
+                        <td>
+                          <LernzeitFeld dokument={v} onGeaendert={onGeaendert} />
+                        </td>
                         <td className="hinweis">{v.abschnitt}</td>
                       </tr>
                     ))}
@@ -329,7 +362,7 @@ export default function TuwelSync({ lvas, onStatus }) {
       <Status status={status} />
       <Einrichtung offen={status && !status.letzter_erfolg} />
       <KursZuordnung kurse={kurse} lvas={lvas} onGeaendert={laden} setFehler={setFehler} />
-      <Unterlagen dokumente={dokumente} lvas={lvas} />
+      <Unterlagen dokumente={dokumente} lvas={lvas} onGeaendert={laden} />
     </div>
   )
 }

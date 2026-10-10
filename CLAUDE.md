@@ -34,6 +34,8 @@ studien-hub/
       schemas.py        Pydantic-Schemas der API
       tiss_import.py    Parsen und Abgleich des TISS-iCal-Feeds
       planung.py        Verteilungs-Algorithmus (reine Logik, ohne DB)
+      lernplanung.py    Lernblöcke planen (reine Logik): bald nach Erscheinen, vor Übung/Abgabe
+      lernaufwand.py    Lernaufwand je Unterlage, Wochenbedarf je LVA, ECTS-Abgleich, Korrekturfaktor
       feiertage.py      gesetzliche Feiertage AT (Paket holidays) und freie Tage der Arbeitsregel
       planung_service.py  DB-Anbindung des Algorithmus
       filter.py         gemeinsame Filterlogik für Kalender und Export
@@ -115,6 +117,12 @@ cd frontend; npm run build
   LectureTube-Aufzeichnungen das Aufnahmedatum; andere Video-Links die TUWEL-Zeit der Einstellungen.
   Fehlende Daten fordert der Hub mit `datum_fehlt` an, die Erweiterung holt nur den Kopf (HEAD) und
   schickt sie als `nachtrag` – das ändert keinen Status. „Neu seit letztem Sync“ = Status neu/geaendert.
+- Wochenvorschlag (`planung_service.schlage_woche_vor`): erst Lernblöcke (`Lernblock`, Status vorschlag/
+  bestaetigt), dann Arbeitszeit; Lernblöcke sind für den Arbeitsplaner `belegte_zeiten` (Tageslast, keine
+  Wochenstunden). Was nicht passt, steht in `konflikte` – nie still kürzen.
+- Lernaufwand: Folien/Skript nach Seiten (PDF quer = Folien), Übungsblatt fest, Video Dauer × Faktor; Werte je LVA
+  in `Lva.lernparameter` (nur Abweichungen vom Standard), `Dokument.lern_minuten` überschreibt (0 = nicht lernen).
+  Korrekturfaktor je LVA aus `Lernblock.tatsaechliche_minuten` (geglättet, 0,25–4). Soll: ECTS × 25 h / Semesterwochen.
 - Eine in der LVA gespeicherte `tuwel_kurs_id` gilt nur bei passendem Semester; bei Zuordnungswechsel
   ziehen die Unterlagen samt Dateien um (`setze_kurs_lva`).
 - Geheimnisse nur in `.env` (ignoriert); `.env.example` bleibt leer (Test + pre-commit-Hook prüfen das).

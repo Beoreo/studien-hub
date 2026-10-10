@@ -45,6 +45,7 @@ export default function LvaListe({ lvas, onGeaendert }) {
                   <th>TUWEL-Kurs-ID</th>
                   <th>Termine</th>
                   <th title="Aufzeichnungen aus TUWEL (Anzahl und Gesamtdauer)">Videos</th>
+                  <th title="Für den Abgleich des Lernbedarfs: 1 ECTS = 25 Stunden">ECTS</th>
                 </tr>
               </thead>
               <tbody>
@@ -85,13 +86,91 @@ export default function LvaListe({ lvas, onGeaendert }) {
                       <td className="rechts">
                         {videoZusammenfassung(lva.anzahl_videos, lva.video_dauer_sekunden, lva.videos_ohne_dauer)}
                       </td>
+                      <td>
+                        <ZahlFeld wert={lva.ects} schritt="0.5" onSpeichern={(ects) => aendern(lva, { ects })} />
+                      </td>
                     </tr>
                   ))}
               </tbody>
             </table>
           </div>
+          <Lernaufwand lvas={lvas.filter((l) => l.semester === s)} aendern={aendern} />
         </section>
       ))}
     </div>
+  )
+}
+
+// Zahl, die beim Verlassen des Feldes gespeichert wird (leer = nicht gesetzt)
+function ZahlFeld({ wert, schritt = '1', onSpeichern, leerErlaubt = true }) {
+  return (
+    <input
+      className="kurz"
+      type="number"
+      min="0"
+      step={schritt}
+      key={wert ?? 'leer'}
+      defaultValue={wert ?? ''}
+      onBlur={(e) => {
+        const neu = e.target.value === '' ? null : Number(e.target.value)
+        if (neu === null && !leerErlaubt) return
+        if (neu !== (wert ?? null)) onSpeichern(neu)
+      }}
+    />
+  )
+}
+
+const LERNWERTE = [
+  { feld: 'minuten_pro_folie', name: 'Min./Folie', schritt: '0.5' },
+  { feld: 'minuten_pro_skriptseite', name: 'Min./Skriptseite', schritt: '0.5' },
+  { feld: 'minuten_pro_uebungsblatt', name: 'Min./Übungsblatt', schritt: '15' },
+  { feld: 'video_faktor', name: 'Videofaktor', schritt: '0.1' },
+  { feld: 'minuten_sonstiges', name: 'Min./sonstige Datei', schritt: '5' },
+]
+
+// Schätzwerte für den Lernaufwand je LVA und der aus eigenen Zeiten gelernte Korrekturfaktor
+function Lernaufwand({ lvas, aendern }) {
+  return (
+    <details className="lernaufwand">
+      <summary>Lernaufwand schätzen – Werte je LVA</summary>
+      <p className="hinweis">
+        Folien und Skripte zählen nach Seiten (PDF im Querformat = Folien), Videos nach Dauer × Faktor, Übungsblätter mit
+        festem Wert. Der Korrekturfaktor ergibt sich aus den Zeiten, die du nach Lernblöcken einträgst.
+      </p>
+      <div className="tabelle-huelle">
+        <table className="tabelle">
+          <thead>
+            <tr>
+              <th>LVA</th>
+              {LERNWERTE.map((w) => (
+                <th key={w.feld}>{w.name}</th>
+              ))}
+              <th title="Tatsächlich gebrauchte ÷ geplante Lernzeit, geglättet">Korrektur</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lvas.map((lva) => (
+              <tr key={lva.id}>
+                <td>{lva.kurzname || lva.titel}</td>
+                {LERNWERTE.map((w) => (
+                  <td key={w.feld}>
+                    <ZahlFeld
+                      wert={lva.lernparameter?.[w.feld]}
+                      schritt={w.schritt}
+                      leerErlaubt={false}
+                      onSpeichern={(wert) => aendern(lva, { lernparameter: { [w.feld]: wert } })}
+                    />
+                  </td>
+                ))}
+                <td title={`${lva.korrektur_rueckmeldungen} Rückmeldungen`}>
+                  × {String(lva.korrektur_faktor).replace('.', ',')}
+                  {lva.korrektur_rueckmeldungen === 0 && <span className="hinweis"> (noch keine)</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
   )
 }

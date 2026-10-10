@@ -268,6 +268,7 @@ class _Tag:
     fristen_morgen: list[PlanTermin]  # Prüfungen/Abgaben am Folgetag
     voller_unitag: bool
     uni_dauer: timedelta
+    belegt: list[Intervall] = field(default_factory=list)  # z. B. Lernblöcke: Tageslast, aber keine Arbeit
 
 
 @dataclass(frozen=True)
@@ -280,7 +281,13 @@ class _Tagesplan:
     geopfert: tuple[PlanTermin, ...] = ()
 
 
-def _baue_tage(woche_start: date, regeln: Arbeitsregeln, termine: list[PlanTermin], bestehend: list[Intervall]) -> list[_Tag]:
+def _baue_tage(
+    woche_start: date,
+    regeln: Arbeitsregeln,
+    termine: list[PlanTermin],
+    bestehend: list[Intervall],
+    belegt: list[Intervall] | None = None,
+) -> list[_Tag]:
     tage = []
     for i in range(7):
         datum = woche_start + timedelta(days=i)
@@ -293,6 +300,7 @@ def _baue_tage(woche_start: date, regeln: Arbeitsregeln, termine: list[PlanTermi
             pflicht=pflicht,
             weich=weich,
             fix=[b for b in bestehend if b.start.date() == datum],
+            belegt=[b for b in belegt or [] if b.start.date() == datum],
             fristen_morgen=[t for t in termine if t.ist_frist and t.start.date() == datum + timedelta(days=1)],
             voller_unitag=uni_dauer >= regeln.voller_unitag > NULL,
             uni_dauer=uni_dauer,
@@ -302,7 +310,7 @@ def _baue_tage(woche_start: date, regeln: Arbeitsregeln, termine: list[PlanTermi
 
 def _sperren(tag: _Tag, regeln: Arbeitsregeln, stufe: _Stufe, alle_termine: list[PlanTermin]) -> list[Intervall]:
     sperren = [t.intervall.erweitert(regeln.puffer) for t in tag.pflicht]
-    sperren += [b.erweitert(PAUSE) for b in tag.fix]
+    sperren += [b.erweitert(PAUSE) for b in tag.fix + tag.belegt]
     if not stufe.weich_ueberplanen:
         sperren += [t.intervall.erweitert(regeln.puffer) for t in tag.weich]
     besucht = tag.pflicht + ([] if stufe.weich_ueberplanen else tag.weich)
@@ -348,7 +356,7 @@ def _bewerte_tag(tag: _Tag, bloecke: tuple[Intervall, ...], regeln: Arbeitsregel
     arbeit = neu + _summe(tag.fix)
     geopfert = tuple(t for t in tag.weich if any(t.intervall.erweitert(regeln.puffer).ueberschneidet(b) for b in bloecke))
     uni = vereinige(t.intervall for t in tag.pflicht + [w for w in tag.weich if w not in geopfert])
-    last = _summe(uni) + arbeit
+    last = _summe(uni) + arbeit + _summe(tag.belegt)
     if bloecke and last > regeln.max_tag:
         return None
 
@@ -371,7 +379,7 @@ def _tagesplaene(tag: _Tag, regeln: Arbeitsregeln, sperren: list[Intervall]) -> 
     if not luecken:
         return plaene
 
-    obergrenze = regeln.max_tag - _summe(tag.fix)
+    obergrenze = regeln.max_tag - _summe(tag.fix) - _summe(tag.belegt)
     if tag.fristen_morgen:
         # Am Vortag einer Prüfung oder Abgabe bleibt mindestens ein Lernfenster frei
         fenster = _tagesfenster(tag.datum, regeln)
@@ -476,6 +484,7 @@ def verteile_arbeitszeit(
     regeln: Arbeitsregeln,
     termine: Iterable[PlanTermin],
     bestaetigte_bloecke: Iterable[Intervall],
+    belegte_zeiten: Iterable[Intervall] = (),
 ) -> Verteilung:
     """Berechnet den Vorschlag für die flexiblen Arbeitsblöcke einer Woche."""
     woche_start = wochenbeginn(woche)
@@ -492,7 +501,9 @@ def verteile_arbeitszeit(
     if bedarf <= NULL:
         return verteilung
 
-    tage = _baue_tage(woche_start, regeln, termine, bestehend)
+    # Lernblöcke: gesperrt und Teil der Tageslast, zählen aber nicht zu den Wochenstunden
+    belegt = [b for b in belegte_zeiten if b.ueberschneidet(woche_iv)]
+    tage = _baue_tage(woche_start, regeln, termine, bestehend, belegt)
     hat_weiche = any(tag.weich for tag in tage)
 
     ergebnis = None

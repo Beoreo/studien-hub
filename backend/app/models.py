@@ -22,6 +22,15 @@ TERMIN_TYPEN = [TYP_VO, TYP_UE, TYP_VU, TYP_PRUEFUNG, TYP_ABGABE, TYP_SONSTIGE]
 # Standardgewichte der Verteilung (je 0–10), siehe planung.Gewichte
 STANDARD_GEWICHTE = {"gleichmaessig": 5, "buendeln": 5, "lernzeit": 5, "erholung": 5, "zerstueckelung": 5}
 
+# Lernaufwand je Unterlage (pro LVA überschreibbar, siehe lernaufwand.py)
+STANDARD_LERNPARAMETER = {
+    "minuten_pro_folie": 2.0,
+    "minuten_pro_skriptseite": 6.0,
+    "minuten_pro_uebungsblatt": 180.0,
+    "video_faktor": 1.5,
+    "minuten_sonstiges": 15.0,
+}
+
 # Arbeitsblöcke
 ART_FIX = "fix"
 ART_FLEXIBEL = "flexibel"
@@ -51,6 +60,9 @@ class Lva(Base):
     anwesenheitspflicht: Mapped[bool] = mapped_column(Boolean, default=False)
     aufzeichnung: Mapped[bool] = mapped_column(Boolean, default=False)
     tuwel_kurs_id: Mapped[int | None] = mapped_column(Integer)
+    ects: Mapped[float | None] = mapped_column(Float)
+    # Abweichungen von STANDARD_LERNPARAMETER, nur gesetzte Schlüssel
+    lernparameter: Mapped[dict | None] = mapped_column(JSON)
 
     termine: Mapped[list["Termin"]] = relationship(back_populates="lva", cascade="all, delete-orphan")
 
@@ -149,6 +161,11 @@ class Arbeitsregel(Base):
     voller_unitag_stunden: Mapped[float] = mapped_column(Float, default=6)
     min_freie_tage: Mapped[int] = mapped_column(Integer, default=1)
     gewichte: Mapped[dict] = mapped_column(JSON, default=lambda: dict(STANDARD_GEWICHTE))
+    # Lernblöcke (werden vor der Arbeitszeit geplant)
+    lern_min_block_minuten: Mapped[int] = mapped_column(Integer, default=45)
+    lern_max_block_minuten: Mapped[int] = mapped_column(Integer, default=120)
+    lern_tage: Mapped[list[int]] = mapped_column(JSON, default=lambda: [0, 1, 2, 3, 4, 5])
+    ects_warnschwelle: Mapped[float] = mapped_column(Float, default=0.5)  # ±50 % gilt als starke Abweichung
 
 
 class Einstellung(Base):
@@ -217,11 +234,44 @@ class Dokument(Base):
     # Erscheinungsdatum und woher es stammt: "tuwel", "last-modified" oder "aufnahme"
     erschienen_am: Mapped[datetime | None] = mapped_column(DateTime)
     erschienen_quelle: Mapped[str | None] = mapped_column(String(20))
+    # Für den Lernaufwand: Seitenzahl und Art ("folien", "skript", "uebung", "video", "sonstiges")
+    seiten: Mapped[int | None] = mapped_column(Integer)
+    lernart: Mapped[str | None] = mapped_column(String(12))
+    # Eigene Lernzeit in Minuten statt der Schätzung (0 = nicht lernen, z. B. Nachschlagematerial)
+    lern_minuten: Mapped[int | None] = mapped_column(Integer)
     erstellt_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     geaendert_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     zuletzt_gesehen: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     lva: Mapped[Lva] = relationship()
+
+
+LERN_VORSCHLAG = "vorschlag"
+LERN_BESTAETIGT = "bestaetigt"
+
+
+class Lernblock(Base):
+    """Geplante Lernzeit für eine LVA (KONZEPT.md, Datenmodell „Lernblock“)."""
+
+    __tablename__ = "lernblock"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lva_id: Mapped[int] = mapped_column(ForeignKey("lva.id", ondelete="CASCADE"), index=True)
+    thema: Mapped[str] = mapped_column(String(500), default="")
+    start: Mapped[datetime] = mapped_column(DateTime, index=True)
+    ende: Mapped[datetime] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(12), default=LERN_VORSCHLAG)
+    # Welche Unterlagen der Block abdeckt: {dokument_id: minuten}
+    zuteilung: Mapped[dict] = mapped_column(JSON, default=dict)
+    erledigt: Mapped[bool] = mapped_column(Boolean, default=False)
+    tatsaechliche_minuten: Mapped[int | None] = mapped_column(Integer)  # selbst eingetragen
+    notiz: Mapped[str | None] = mapped_column(Text)
+
+    lva: Mapped[Lva] = relationship()
+
+    @property
+    def geplante_minuten(self) -> int:
+        return int((self.ende - self.start).total_seconds() // 60)
 
 
 def lies_einstellung(session, schluessel: str) -> str | None:

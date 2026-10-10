@@ -113,6 +113,45 @@ function ArbeitInhalt({ event, onGeaendert, setFehler }) {
   )
 }
 
+// Lernblock: erledigt markieren und die tatsächlich gebrauchte Zeit eintragen – daraus lernt die Schätzung
+function LernInhalt({ event, onGeaendert, setFehler }) {
+  const props = event.extendedProps
+  const geplant = Math.round((event.end - event.start) / 60000)
+  const [minuten, setMinuten] = useState(geplant)
+  const vorschlag = props.status === 'vorschlag'
+  const ausfuehren = (aufruf) => aufruf.then(onGeaendert).catch((e) => setFehler(e.message))
+
+  return (
+    <>
+      <h2>📚 {event.title.replace(/^Vorschlag: /, '')}</h2>
+      <p>
+        {zeit(event.start)} – {event.end.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })} · geplant{' '}
+        {geplant} min · {vorschlag ? 'Vorschlag' : 'bestätigt'}
+        {props.erledigt && ' · erledigt'}
+      </p>
+      {props.thema && <p className="hinweis">Stoff: {props.thema}</p>}
+      <label className="block">
+        Tatsächlich gebraucht (Minuten)
+        <input type="number" min="0" step="5" value={minuten} onChange={(e) => setMinuten(Number(e.target.value))} />
+      </label>
+      <p className="hinweis">Damit wird die Schätzung für diese LVA mit der Zeit genauer.</p>
+      <div className="dialog-knoepfe">
+        <button onClick={() => ausfuehren(api.lernBlockAendern(props.lernblockId, { tatsaechliche_minuten: minuten }))}>
+          Erledigt – Zeit speichern
+        </button>
+        {vorschlag && (
+          <button className="zweitrangig" onClick={() => ausfuehren(api.lernBlockAendern(props.lernblockId, { status: 'bestaetigt' }))}>
+            Bestätigen
+          </button>
+        )}
+        <button className="gefahr" onClick={() => ausfuehren(api.lernBlockLoeschen(props.lernblockId))}>
+          {vorschlag ? 'Vorschlag verwerfen' : 'Löschen'}
+        </button>
+      </div>
+    </>
+  )
+}
+
 function NeuInhalt({ start, ende, onGeaendert, setFehler }) {
   const [notiz, setNotiz] = useState('')
   const anlegen = () =>
@@ -149,6 +188,7 @@ export default function EreignisDialog({ auswahl, onSchliessen, onGeaendert }) {
           <TerminInhalt id={auswahl.event.extendedProps.terminId} onGeaendert={onGeaendert} setFehler={setFehler} />
         )}
         {auswahl.art === 'arbeit' && <ArbeitInhalt event={auswahl.event} onGeaendert={onGeaendert} setFehler={setFehler} />}
+        {auswahl.art === 'lernen' && <LernInhalt event={auswahl.event} onGeaendert={onGeaendert} setFehler={setFehler} />}
         {auswahl.art === 'neu' && (
           <NeuInhalt start={auswahl.start} ende={auswahl.ende} onGeaendert={onGeaendert} setFehler={setFehler} />
         )}

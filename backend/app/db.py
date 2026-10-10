@@ -62,6 +62,15 @@ NACHTRAEGLICHE_SPALTEN = [
     ("dokument", "medien_url", "TEXT"),
     ("dokument", "erschienen_am", "DATETIME"),
     ("dokument", "erschienen_quelle", "VARCHAR(20)"),
+    ("dokument", "seiten", "INTEGER"),
+    ("dokument", "lernart", "VARCHAR(12)"),
+    ("dokument", "lern_minuten", "INTEGER"),
+    ("lva", "ects", "FLOAT"),
+    ("lva", "lernparameter", "JSON"),
+    ("arbeitsregel", "lern_min_block_minuten", "INTEGER DEFAULT 45"),
+    ("arbeitsregel", "lern_max_block_minuten", "INTEGER DEFAULT 120"),
+    ("arbeitsregel", "lern_tage", "JSON DEFAULT '[0, 1, 2, 3, 4, 5]'"),
+    ("arbeitsregel", "ects_warnschwelle", "FLOAT DEFAULT 0.5"),
 ]
 
 

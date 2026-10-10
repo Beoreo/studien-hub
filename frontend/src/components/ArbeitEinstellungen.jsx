@@ -17,6 +17,46 @@ const STANDARD_REGEL = {
   voller_unitag_stunden: 6,
   min_freie_tage: 1,
   gewichte: { gleichmaessig: 5, buendeln: 5, lernzeit: 5, erholung: 5, zerstueckelung: 5 },
+  lern_min_block_minuten: 45,
+  lern_max_block_minuten: 120,
+  lern_tage: [0, 1, 2, 3, 4, 5],
+  ects_warnschwelle: 0.5,
+}
+
+// Lernblöcke werden vor der Arbeitszeit geplant (Schätzwerte je LVA im Reiter „LVAs“)
+function LernEinstellungen({ regel, setRegel }) {
+  const zahl = (feld) => (e) => setRegel({ ...regel, [feld]: Number(e.target.value) })
+  return (
+    <fieldset className="kriterien">
+      <legend>Lernblöcke</legend>
+      <p className="hinweis">
+        Neue Unterlagen erzeugen Lernbedarf. Lernblöcke liegen bald nach Erscheinen des Stoffs und vor der nächsten Übung oder
+        Abgabe; die Arbeitszeit wird erst danach verteilt. Passt nicht beides, zeigt der Vorschlag einen Konflikt.
+      </p>
+      <label>
+        Lerntage
+        <TagAuswahl werte={regel.lern_tage} onChange={(lern_tage) => setRegel({ ...regel, lern_tage })} />
+      </label>
+      <label>
+        Lernblock mindestens / höchstens (Minuten)
+        <span className="zeile">
+          <input type="number" min="15" step="15" value={regel.lern_min_block_minuten} onChange={zahl('lern_min_block_minuten')} />
+          <input type="number" min="15" step="15" value={regel.lern_max_block_minuten} onChange={zahl('lern_max_block_minuten')} />
+        </span>
+      </label>
+      <label>
+        Warnung, wenn der Wochenbedarf einer LVA so stark vom ECTS-Soll abweicht (%)
+        <input
+          type="number"
+          min="5"
+          max="500"
+          step="5"
+          value={Math.round(regel.ects_warnschwelle * 100)}
+          onChange={(e) => setRegel({ ...regel, ects_warnschwelle: Number(e.target.value) / 100 })}
+        />
+      </label>
+    </fieldset>
+  )
 }
 
 // Kriterien der entspannten Woche, je 0 (egal) bis 10 (sehr wichtig)
@@ -222,6 +262,7 @@ function RegelFormular({ setMeldung }) {
         <input value={regel.arbeitgeber} onChange={setze('arbeitgeber')} />
       </label>
       <EntspannteWoche regel={regel} setRegel={setRegel} />
+      <LernEinstellungen regel={regel} setRegel={setRegel} />
       <div className="feld">
         <span>Zusätzliche freie Tage</span>
         <p className="hinweis">

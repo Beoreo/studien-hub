@@ -18,6 +18,7 @@ from ..planung_service import (
     schlage_woche_vor,
     verwerfe_woche,
 )
+from .lernen import lernblock_out
 from ..schemas import (
     ArbeitsblockIn,
     ArbeitsblockOut,
@@ -177,7 +178,9 @@ def vorschlag_berechnen(
     woche: date = Query(..., description="ein beliebiger Tag der Woche"), session: Session = Depends(get_session)
 ):
     try:
-        return schlage_woche_vor(session, woche)
+        ergebnis = schlage_woche_vor(session, woche)
+        ergebnis["lernbloecke"] = [lernblock_out(b) for b in ergebnis["lernbloecke"]]
+        return ergebnis
     except KeineRegelFehler as fehler:
         raise HTTPException(409, str(fehler)) from fehler
 

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import FRONTEND_DIST, SCHEDULER_AKTIV, SYNC_UHRZEIT
 from .db import init_db, ist_initialisiert
-from .routers import arbeit, kalender, lvas, termine, tiss, tuwel
+from .routers import arbeit, kalender, lernen, lvas, termine, tiss, tuwel
 
 
 def _starte_scheduler():
@@ -32,7 +32,7 @@ async def lebenszyklus(app: FastAPI):
 
 
 app = FastAPI(title="Studien-Hub", version="0.1.0", lifespan=lebenszyklus)
-for modul in (lvas, termine, arbeit, tiss, tuwel, kalender):
+for modul in (lvas, termine, arbeit, lernen, tiss, tuwel, kalender):
     app.include_router(modul.router)
 
 

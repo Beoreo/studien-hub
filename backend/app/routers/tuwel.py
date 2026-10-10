@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..config import ERWEITERUNG_ORDNER, UNTERLAGEN_ORDNER
 from ..db import get_session
+from ..lernaufwand import Korrektur, dokument_aufbereiten, grundaufwand_minuten, korrekturfaktor, lernparameter
 from ..models import DOK_GEAENDERT, DOK_NEU, ZUORDNUNG_AUS, ZUORDNUNG_AUTO, ZUORDNUNG_MANUELL, Dokument, Lva, TuwelKurs
 from ..tuwel_sync import (
     Eintrag,
@@ -197,6 +198,20 @@ def kurs_zuordnen(kurs_id: int, daten: ZuordnungIn, session: Session = Depends(g
     return kurs_out(kurs)
 
 
+class LernzeitIn(BaseModel):
+    lern_minuten: int | None = Field(None, ge=0, le=100 * 60)  # None = Schätzung verwenden, 0 = nicht lernen
+
+
+@router.patch("/dokumente/{dokument_id}")
+def dokument_lernzeit(dokument_id: int, daten: LernzeitIn, session: Session = Depends(get_session)):
+    doc = session.get(Dokument, dokument_id)
+    if doc is None:
+        raise HTTPException(404, "Unterlage nicht gefunden")
+    doc.lern_minuten = daten.lern_minuten
+    session.commit()
+    return {"id": doc.id, "lern_minuten": doc.lern_minuten}
+
+
 @router.get("/dokumente")
 def dokumente_auflisten(lva_id: int | None = None, session: Session = Depends(get_session)):
     # pro LVA nach Erscheinungsdatum, neueste zuerst; ohne Datum ans Ende
@@ -205,8 +220,18 @@ def dokumente_auflisten(lva_id: int | None = None, session: Session = Depends(ge
     )
     if lva_id is not None:
         abfrage = abfrage.where(Dokument.lva_id == lva_id)
-    return [
+    korrekturen: dict[int, Korrektur] = {}
+
+    def geschaetzt(d: Dokument) -> int:
+        korrektur = korrekturen.setdefault(d.lva_id, korrekturfaktor(session, d.lva_id))
+        dokument_aufbereiten(d)
+        return round(grundaufwand_minuten(d, lernparameter(d.lva)) * korrektur.faktor)
+
+    liste = [
         {
+            # Schätzung zuerst: sie bestimmt Lernart und Seitenzahl, falls noch unbekannt
+            "lern_minuten_geschaetzt": geschaetzt(d), "lernart": d.lernart, "seiten": d.seiten,
+            "lern_minuten": d.lern_minuten,
             "id": d.id, "lva_id": d.lva_id, "abschnitt": d.abschnitt, "aktivitaet": d.aktivitaet,
             "dateiname": d.dateiname, "typ": d.typ, "ist_link": d.ist_link,
             "url": d.quelle_url if d.ist_link else None, "pfad": d.pfad, "groesse": d.groesse,
@@ -220,6 +245,8 @@ def dokumente_auflisten(lva_id: int | None = None, session: Session = Depends(ge
         }
         for d in session.scalars(abfrage)
     ]
+    session.commit()  # dabei ermittelte Seitenzahlen speichern
+    return liste
 
 
 @router.get("/dokumente/{dokument_id}/datei")

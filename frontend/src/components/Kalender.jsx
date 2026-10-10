@@ -4,7 +4,7 @@ import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import deLocale from '@fullcalendar/core/locales/de'
-import { api, filterParameter, lokalDatum, lokalIso, MARKIERUNGEN } from '../api.js'
+import { api, dauerText, filterParameter, lokalDatum, lokalIso, MARKIERUNGEN } from '../api.js'
 import FilterLeiste from './FilterLeiste.jsx'
 import EreignisDialog from './EreignisDialog.jsx'
 
@@ -47,6 +47,7 @@ function EreignisInhalt({ ereignis }) {
         <Symbole props={props} />
         {props.pruefung && <strong>Prüfung · </strong>}
         {props.abgabe && <strong>Abgabe · </strong>}
+        {props.art === 'lernen' && <span title="Lernblock">{props.erledigt ? '✅' : '📚'} </span>}
         <span className="ereignis-titel">{event.title}</span>
       </div>
       {timeText && <div className="ereignis-zeit">{timeText}</div>}
@@ -122,11 +123,11 @@ export default function Kalender({ lvas }) {
   }
 
   async function verschieben(info) {
+    const props = info.event.extendedProps
+    const zeit = { start: lokalIso(info.event.start), ende: lokalIso(info.event.end) }
     try {
-      await api.blockAendern(info.event.extendedProps.blockId, {
-        start: lokalIso(info.event.start),
-        ende: lokalIso(info.event.end),
-      })
+      if (props.art === 'lernen') await api.lernBlockAendern(props.lernblockId, zeit)
+      else await api.blockAendern(props.blockId, zeit)
       neuLaden() // Vorschlag gilt nach dem Verschieben als bestätigt
     } catch (e) {
       info.revert()
@@ -170,6 +171,51 @@ export default function Kalender({ lvas }) {
             Woche ab {new Date(vorschlag.woche).toLocaleDateString('de-AT')}: {vorschlag.verplant_stunden} von{' '}
             {vorschlag.soll_stunden} offenen Stunden verplant.
             {vorschlag.fehlende_stunden > 0 && <> Es fehlen {vorschlag.fehlende_stunden} Stunden.</>}
+            {vorschlag.lern_stunden > 0 && <> Dazu {String(vorschlag.lern_stunden).replace('.', ',')} h Lernen.</>}
+            {vorschlag.konflikte?.length > 0 && (
+              <div className="meldung fehler konflikt">
+                <strong>Konflikt – Lernen und Arbeit passen nicht beide in diese Woche:</strong>
+                <ul>
+                  {vorschlag.konflikte.map((k) => (
+                    <li key={k}>{k}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {vorschlag.ects_warnungen?.length > 0 && (
+              <div className="meldung warnung">
+                <ul>
+                  {vorschlag.ects_warnungen.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {vorschlag.lernbedarf?.length > 0 && (
+              <details className="begruendung">
+                <summary>Lernbedarf dieser Woche</summary>
+                <table className="tabelle">
+                  <thead>
+                    <tr>
+                      <th>LVA</th>
+                      <th>neuer Stoff</th>
+                      <th>Präsenz</th>
+                      <th>ECTS-Soll</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vorschlag.lernbedarf.map((b) => (
+                      <tr key={b.lva_id} className={b.warnung ? 'warnzeile' : ''}>
+                        <td title={b.unterlagen.map((u) => `${u.titel}: ${u.minuten} min`).join('\n')}>{b.lva_name}</td>
+                        <td>{dauerText(b.unterlagen_minuten * 60) || '–'}</td>
+                        <td>{dauerText(b.praesenz_minuten * 60) || '–'}</td>
+                        <td>{b.soll_minuten ? dauerText(b.soll_minuten * 60) : <span className="hinweis">ECTS fehlen</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            )}
             {vorschlag.begruendungen.length > 0 && (
               <div className="begruendung">
                 Warum so:
@@ -226,7 +272,7 @@ export default function Kalender({ lvas }) {
           eventResize={verschieben}
           eventClick={(info) => {
             const art = info.event.extendedProps.art
-            if (art === 'termin' || art === 'arbeit') setAuswahl({ art, event: info.event })
+            if (art === 'termin' || art === 'arbeit' || art === 'lernen') setAuswahl({ art, event: info.event })
           }}
           select={(info) => setAuswahl({ art: 'neu', start: info.start, ende: info.end })}
           datesSet={(info) => setZeitraum({ von: lokalIso(info.start), bis: lokalIso(info.end) })}
