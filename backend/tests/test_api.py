@@ -22,7 +22,9 @@ def importieren(client, tiss_ics):
 
 
 def test_status(client):
-    assert client.get("/api/status").json() == {"ok": True}
+    status = client.get("/api/status").json()
+    assert status["ok"] is True and status["app"] == "studien-hub"
+    assert status["pid"] > 0 and status["code_stand"] > 0
 
 
 def test_import_und_lvas(client, tiss_ics):

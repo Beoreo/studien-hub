@@ -1,6 +1,8 @@
 """Einstiegspunkt des Studien-Hubs: FastAPI-App mit Scheduler und Oberfläche."""
 
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -33,9 +35,13 @@ for modul in (lvas, termine, arbeit, tiss, kalender):
     app.include_router(modul.router)
 
 
+# Neuester Änderungszeitpunkt des Backend-Codes beim Laden; npm run dev erkennt daran veraltete Prozesse
+CODE_STAND = max(p.stat().st_mtime for p in Path(__file__).parent.rglob("*.py"))
+
+
 @app.get("/api/status", tags=["System"])
 def status():
-    return {"ok": True}
+    return {"ok": True, "app": "studien-hub", "pid": os.getpid(), "code_stand": CODE_STAND}
 
 
 # Gebaute Oberfläche (frontend/dist) direkt mit ausliefern, falls vorhanden
