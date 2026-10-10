@@ -564,3 +564,21 @@ code.pfad {
   margin-left: 0.5rem;
   font-size: 0.75rem;
 }
+
+.tabelle tr.frisch td {
+  background: #eff6ff;
+}
+
+.marke.vorne {
+  margin: 0 0.4rem 0 0;
+}
+
+.quelle {
+  font-size: 0.7rem;
+  color: var(--text-leise);
+  border: 1px solid var(--rand);
+  border-radius: 3px;
+  padding: 0 0.25rem;
+  margin-left: 0.2rem;
+  white-space: nowrap;
+}

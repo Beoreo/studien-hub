@@ -17,14 +17,15 @@ import re
 import secrets
 import tempfile
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import BinaryIO
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .config import UNTERLAGEN_ORDNER
+from .config import UNTERLAGEN_ORDNER, ZEITZONE
 from .models import (
     DOK_GEAENDERT,
     DOK_NEU,
@@ -204,6 +205,9 @@ class Eintrag:
     dauer_text: str = ""
     dauer_sekunden: int | None = None
     medien_url: str | None = None
+    # Quellen für das Erscheinungsdatum (siehe setze_erscheinungsdatum)
+    tuwel_zeit: int | None = None  # Unix-Zeit, die TUWEL für die Aktivität meldet (hinzugefügt/geändert)
+    last_modified: str | None = None  # HTTP-Kopf Last-Modified der Datei
 
     @property
     def schluessel(self) -> str:
@@ -228,6 +232,57 @@ def dauer_aus_text(text: str | None) -> int | None:
         werte.insert(0, 0)
     stunden, minuten, sekunden = werte
     return stunden * 3600 + minuten * 60 + sekunden
+
+
+QUELLE_TUWEL = "tuwel"
+QUELLE_LAST_MODIFIED = "last-modified"
+QUELLE_AUFNAHME = "aufnahme"
+
+
+def zeit_aus_unix(zeitstempel: int | float | None) -> datetime | None:
+    """Unix-Zeit (TUWEL) als naive Wiener Lokalzeit."""
+    if not zeitstempel or zeitstempel <= 0:
+        return None
+    return datetime.fromtimestamp(zeitstempel, ZEITZONE).replace(tzinfo=None)
+
+
+def zeit_aus_http(kopf: str | None) -> datetime | None:
+    """HTTP-Datum („Tue, 13 Oct 2026 08:15:00 GMT“) als naive Wiener Lokalzeit."""
+    if not kopf:
+        return None
+    try:
+        zeit = parsedate_to_datetime(kopf)
+    except (TypeError, ValueError, IndexError):
+        return None
+    if zeit.tzinfo is None:
+        zeit = zeit.replace(tzinfo=timezone.utc)
+    return zeit.astimezone(ZEITZONE).replace(tzinfo=None)
+
+
+def setze_erscheinungsdatum(doc: Dokument, e: Eintrag) -> None:
+    """Wählt das Erscheinungsdatum nach Quelle und merkt sich, woher es stammt.
+
+    Dateien:     TUWEL-Datum der Aktivität, sonst Last-Modified der Datei.
+    Aufzeichnungen (LectureTube): Aufnahmedatum.
+    Andere Videos: TUWEL-Datum der Aktivität.
+    Fehlt eine Quelle in diesem Lauf, bleibt ein früher ermitteltes Datum erhalten.
+    """
+    kandidaten: list[tuple[datetime | None, str]]
+    if doc.ist_link and doc.episode_id:
+        aufnahme = datetime.combine(doc.aufnahme_am, datetime.min.time()) if doc.aufnahme_am else None
+        kandidaten = [(aufnahme, QUELLE_AUFNAHME), (zeit_aus_unix(e.tuwel_zeit), QUELLE_TUWEL)]
+    elif doc.ist_link:
+        kandidaten = [(zeit_aus_unix(e.tuwel_zeit), QUELLE_TUWEL)]
+    else:
+        kandidaten = [(zeit_aus_unix(e.tuwel_zeit), QUELLE_TUWEL), (zeit_aus_http(e.last_modified), QUELLE_LAST_MODIFIED)]
+    rang = {quelle: i for i, (_, quelle) in enumerate(kandidaten)}
+    for zeit, quelle in kandidaten:
+        if zeit is None:
+            continue
+        # eine bessere Quelle ersetzt eine schlechtere, gleiche Quelle wird aktualisiert
+        if doc.erschienen_quelle is None or rang.get(doc.erschienen_quelle, 99) >= rang[quelle]:
+            doc.erschienen_am, doc.erschienen_quelle = zeit, quelle
+        return
 
 
 MONATE = {
@@ -268,6 +323,7 @@ def inhalt_abgleichen(session: Session, kurs: TuwelKurs, eintraege: list[Eintrag
     jetzt = datetime.now()
     herunterladen: list[str] = []
     details: list[str] = []  # neue Aufzeichnungen, deren Dauer die Erweiterung nachliefern soll
+    datum_fehlt: list[str] = []  # gespeicherte Dateien ohne Erscheinungsdatum
     unveraendert = videos_neu = 0
 
     # Eine LectureTube-Serie wurde bisher als ein einziger Link gespeichert: durch die Episoden ersetzen
@@ -303,19 +359,26 @@ def inhalt_abgleichen(session: Session, kurs: TuwelKurs, eintraege: list[Eintrag
             doc.dauer_sekunden = e.dauer or doc.dauer_sekunden
             doc.aufnahme_am = datum_aus_text(e.datum_text) or doc.aufnahme_am
             doc.medien_url = e.medien_url or doc.medien_url
+            setze_erscheinungsdatum(doc, e)
             if e.episode_id and doc.dauer_sekunden is None and e.url not in details:
                 details.append(e.url)
             continue
 
         # Gleiche URL wie beim letzten Mal und Datei vorhanden: TUWEL ändert die URL bei jeder neuen Version
         if doc is not None and doc.quelle_url == e.url and doc.pfad and (UNTERLAGEN_ORDNER / doc.pfad).exists():
+            setze_erscheinungsdatum(doc, e)  # auch nachträglich für früher gespeicherte Unterlagen
+            if nachtrag:
+                continue
             doc.status = DOK_UNVERAENDERT
             doc.zuletzt_gesehen = jetzt
             unveraendert += 1
-        elif e.url not in herunterladen:
+            if doc.erschienen_am is None and e.url not in datum_fehlt:
+                datum_fehlt.append(e.url)  # Erweiterung soll Last-Modified per HEAD nachliefern
+        elif not nachtrag and e.url not in herunterladen:
             herunterladen.append(e.url)
     session.commit()
-    return {"herunterladen": herunterladen, "unveraendert": unveraendert, "videos_neu": videos_neu, "details": details}
+    return {"herunterladen": herunterladen, "unveraendert": unveraendert, "videos_neu": videos_neu, "details": details,
+            "datum_fehlt": datum_fehlt}
 
 
 # --- Ablage der Dateien ---------------------------------------------------------------
@@ -403,6 +466,7 @@ def datei_speichern(session: Session, kurs: TuwelKurs, e: Eintrag, inhalt: Binar
     doc.quelle_url, doc.pfad = e.url, relativ.as_posix()
     doc.pruefsumme, doc.groesse, doc.status = summe, groesse, status
     doc.zuletzt_gesehen = jetzt
+    setze_erscheinungsdatum(doc, e)
     if status != DOK_UNVERAENDERT:
         doc.geaendert_am = jetzt
     session.commit()

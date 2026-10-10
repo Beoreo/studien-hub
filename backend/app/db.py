@@ -60,6 +60,8 @@ NACHTRAEGLICHE_SPALTEN = [
     ("dokument", "aufnahme_am", "DATE"),
     ("dokument", "dauer_sekunden", "INTEGER"),
     ("dokument", "medien_url", "TEXT"),
+    ("dokument", "erschienen_am", "DATETIME"),
+    ("dokument", "erschienen_quelle", "VARCHAR(20)"),
 ]
 
 

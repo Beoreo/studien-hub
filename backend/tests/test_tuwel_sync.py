@@ -149,7 +149,7 @@ def test_videos_nur_als_link(session, lvas, unterlagen):
     video = eintrag(cm_id=400, art="video", url="https://lecturetube.tuwien.ac.at/v/123", aktivitaet="VO 1 Aufzeichnung",
                     dateiname="")
     ergebnis = inhalt_abgleichen(session, k, [video])
-    assert ergebnis == {"herunterladen": [], "unveraendert": 0, "videos_neu": 1, "details": []}
+    assert ergebnis == {"herunterladen": [], "unveraendert": 0, "videos_neu": 1, "details": [], "datum_fehlt": []}
     doc = session.query(Dokument).one()
     assert doc.ist_link and doc.typ == "video" and doc.pfad is None and doc.dateiname == "VO 1 Aufzeichnung"
     assert inhalt_abgleichen(session, k, [video])["videos_neu"] == 0
@@ -313,7 +313,9 @@ def test_lva_liste_zeigt_anzahl_videos_und_gesamtdauer(client, session, lvas):
     assert (andere["anzahl_videos"], andere["video_dauer_sekunden"]) == (0, 0)
 
     doks = client.get("/api/tuwel/dokumente", params={"lva_id": lvas["ep1"].id}).json()
-    assert [(d["dateiname"], d["aufnahme_am"], d["dauer_sekunden"]) for d in doks][0] == ("VO 1", "2026-10-06", 5400)
+    # neueste Aufzeichnung zuerst
+    assert [(d["dateiname"], d["aufnahme_am"]) for d in doks] == [("VO 3", "2026-10-08"), ("VO 2", "2026-10-07"), ("VO 1", "2026-10-06")]
+    assert doks[2]["dauer_sekunden"] == 5400 and doks[0]["erschienen_quelle"] == "aufnahme"
 
 
 def test_falsch_gespeicherte_kurs_id_aus_anderem_semester_wird_korrigiert(session, lvas, unterlagen):
@@ -337,3 +339,94 @@ def test_unterlagen_ziehen_bei_neuer_zuordnung_mit_um(session, lvas, unterlagen)
     assert (unterlagen / doc.pfad).read_bytes() == b"x"
     assert not (unterlagen / datei["pfad"]).exists()
     assert session.query(Dokument).filter_by(episode_id="ep1").one().lva_id == lvas["algebra"].id
+
+
+# --- Erscheinungsdatum --------------------------------------------------------------------
+
+from app.tuwel_sync import zeit_aus_http, zeit_aus_unix  # noqa: E402
+
+UNIX_13_OKT_10_15 = 1791879300  # 13.10.2026 10:15 Wiener Zeit (08:15 UTC)
+
+
+def test_zeitquellen_werden_in_wiener_zeit_umgerechnet():
+    assert zeit_aus_unix(UNIX_13_OKT_10_15) == datetime(2026, 10, 13, 10, 15)
+    assert zeit_aus_unix(0) is None and zeit_aus_unix(None) is None
+    assert zeit_aus_http("Tue, 13 Oct 2026 08:15:00 GMT") == datetime(2026, 10, 13, 10, 15)
+    assert zeit_aus_http("Mon, 07 Dec 2026 08:15:00 GMT") == datetime(2026, 12, 7, 9, 15)  # Winterzeit
+    assert zeit_aus_http("kein Datum") is None and zeit_aus_http(None) is None
+
+
+def test_datei_tuwel_datum_hat_vorrang_vor_last_modified(session, lvas, unterlagen):
+    k = kurs(session, 1, "185.A91-2026W")
+    e = eintrag(tuwel_zeit=UNIX_13_OKT_10_15, last_modified="Thu, 01 Oct 2026 08:00:00 GMT")
+    doc = session.get(Dokument, datei_speichern(session, k, e, io.BytesIO(b"x"))["id"])
+    assert (doc.erschienen_am, doc.erschienen_quelle) == (datetime(2026, 10, 13, 10, 15), "tuwel")
+
+    nur_kopf = eintrag(cm_id=101, dateiname="b.pdf", url="https://tuwel/x/b.pdf", last_modified="Thu, 01 Oct 2026 08:00:00 GMT")
+    doc = session.get(Dokument, datei_speichern(session, k, nur_kopf, io.BytesIO(b"y"))["id"])
+    assert (doc.erschienen_am, doc.erschienen_quelle) == (datetime(2026, 10, 1, 10, 0), "last-modified")
+
+    # später liefert TUWEL ein Datum: bessere Quelle ersetzt Last-Modified
+    k = kurs(session, 1, "185.A91-2026W")
+    inhalt_abgleichen(session, k, [eintrag(cm_id=101, dateiname="b.pdf", url="https://tuwel/x/b.pdf", tuwel_zeit=UNIX_13_OKT_10_15)])
+    session.refresh(doc)
+    assert doc.erschienen_quelle == "tuwel"
+    # fehlt die Quelle in einem späteren Lauf, bleibt das Datum erhalten
+    inhalt_abgleichen(session, kurs(session, 1, "185.A91-2026W"), [eintrag(cm_id=101, dateiname="b.pdf", url="https://tuwel/x/b.pdf")])
+    session.refresh(doc)
+    assert doc.erschienen_am == datetime(2026, 10, 13, 10, 15)
+
+
+def test_gespeicherte_unterlagen_bekommen_nachtraeglich_ein_datum(session, lvas, unterlagen):
+    k = kurs(session, 1, "185.A91-2026W")
+    alt = eintrag()  # Stand vor dieser Version: ohne Datumsangaben
+    doc = session.get(Dokument, datei_speichern(session, k, alt, io.BytesIO(b"x"))["id"])
+    assert doc.erschienen_am is None
+
+    # nächster Lauf ohne TUWEL-Datum: Hub fordert Last-Modified an, nichts wird neu geladen
+    k = kurs(session, 1, "185.A91-2026W")
+    ergebnis = inhalt_abgleichen(session, k, [alt])
+    assert ergebnis["herunterladen"] == [] and ergebnis["datum_fehlt"] == [alt.url]
+    nachgeliefert = eintrag(last_modified="Fri, 02 Oct 2026 07:30:00 GMT")
+    zweiter = inhalt_abgleichen(session, k, [nachgeliefert], nachtrag=True)
+    assert zweiter == {"herunterladen": [], "unveraendert": 0, "videos_neu": 0, "details": [], "datum_fehlt": []}
+    session.refresh(doc)
+    assert (doc.erschienen_am, doc.erschienen_quelle, doc.status) == (datetime(2026, 10, 2, 9, 30), "last-modified", "unveraendert")
+
+    # mit TUWEL-Datum geht es ohne Nachfrage
+    weitere = eintrag(cm_id=150, dateiname="c.pdf", url="https://tuwel/x/c.pdf")
+    datei_speichern(session, k, weitere, io.BytesIO(b"c"))
+    k = kurs(session, 1, "185.A91-2026W")
+    ergebnis = inhalt_abgleichen(session, k, [eintrag(cm_id=150, dateiname="c.pdf", url="https://tuwel/x/c.pdf",
+                                                      tuwel_zeit=UNIX_13_OKT_10_15)])
+    assert ergebnis["datum_fehlt"] == []
+
+
+def test_video_links_und_aufzeichnungen_bekommen_ihr_datum(session, lvas, unterlagen):
+    k = kurs(session, 1, "185.A91-2026W")
+    inhalt_abgleichen(session, k, [
+        episode(1),  # Aufnahmedatum 6.10.2026 hat Vorrang vor dem TUWEL-Datum der Serie
+        eintrag(cm_id=500, art="video", url="https://youtu.be/x", aktivitaet="Video", dateiname="", tuwel_zeit=UNIX_13_OKT_10_15),
+    ])
+    aufzeichnung = session.query(Dokument).filter_by(episode_id="ep1").one()
+    assert (aufzeichnung.erschienen_am, aufzeichnung.erschienen_quelle) == (datetime(2026, 10, 6), "aufnahme")
+    link = session.query(Dokument).filter_by(tuwel_cm_id=500).one()
+    assert (link.erschienen_am, link.erschienen_quelle) == (datetime(2026, 10, 13, 10, 15), "tuwel")
+
+
+def test_api_sortiert_nach_erscheinungsdatum_und_markiert_neues(client, session, lvas, unterlagen):
+    k = kurs(session, 1, "185.A91-2026W")
+    datei_speichern(session, k, eintrag(cm_id=1, dateiname="alt.pdf", url="u1", last_modified="Thu, 01 Oct 2026 08:00:00 GMT"), io.BytesIO(b"1"))
+    datei_speichern(session, k, eintrag(cm_id=2, dateiname="neu.pdf", url="u2", tuwel_zeit=UNIX_13_OKT_10_15), io.BytesIO(b"2"))
+    datei_speichern(session, k, eintrag(cm_id=3, dateiname="ohne.pdf", url="u3"), io.BytesIO(b"3"))
+    # zweiter Lauf: alt.pdf geändert, neu.pdf unverändert
+    k = kurs(session, 1, "185.A91-2026W")
+    inhalt_abgleichen(session, k, [eintrag(cm_id=2, dateiname="neu.pdf", url="u2", tuwel_zeit=UNIX_13_OKT_10_15),
+                                   eintrag(cm_id=3, dateiname="ohne.pdf", url="u3")])
+    datei_speichern(session, k, eintrag(cm_id=1, dateiname="alt.pdf", url="u1b", last_modified="Mon, 05 Oct 2026 08:00:00 GMT"), io.BytesIO(b"1b"))
+
+    doks = client.get("/api/tuwel/dokumente", params={"lva_id": lvas["ep1"].id}).json()
+    assert [d["dateiname"] for d in doks] == ["neu.pdf", "alt.pdf", "ohne.pdf"]  # neueste zuerst, ohne Datum am Ende
+    assert {d["dateiname"]: d["neu_seit_sync"] for d in doks} == {"neu.pdf": False, "alt.pdf": True, "ohne.pdf": False}
+    assert doks[0]["erschienen_quelle"] == "tuwel" and doks[1]["erschienen_quelle"] == "last-modified"
+    assert doks[2]["erschienen_am"] is None and doks[0]["sync_am"]

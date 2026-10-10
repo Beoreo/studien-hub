@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  aenderungenLesen,
   dateiInfoAusUrl,
   dateinameAusKopf,
   istLoginSeite,
@@ -102,4 +103,18 @@ test('Dateiname aus Content-Disposition', () => {
   assert.equal(dateinameAusKopf("inline; filename=\"skript.pdf\"; filename*=UTF-8''%C3%9Cbung.pdf"), 'Übung.pdf')
   assert.equal(dateinameAusKopf('attachment; filename="folien 1.pdf"'), 'folien 1.pdf')
   assert.equal(dateinameAusKopf(''), null)
+})
+
+test('Änderungszeiten aus core_course_get_updates_since', () => {
+  const zeiten = aenderungenLesen({ instances: [
+    { contextlevel: 'module', id: '5', updates: [{ name: 'configuration', timeupdated: 10 }, { name: 'contentfiles', timeupdated: 20 }] },
+    { contextlevel: 'module', id: 6, updates: [{ name: 'introattachmentfiles', timeupdated: 30 }, { name: 'introfiles', timeupdated: 25 }] },
+    { contextlevel: 'module', id: 7, updates: [{ name: 'configuration', timeupdated: 40 }] },
+    { contextlevel: 'course', id: 1, updates: [] },
+  ] })
+  assert.deepEqual(zeiten.get(5), { dateien: 20, einstellungen: 10 })
+  assert.deepEqual(zeiten.get(6), { dateien: 30, einstellungen: null })
+  assert.deepEqual(zeiten.get(7), { dateien: null, einstellungen: 40 })
+  assert.equal(zeiten.size, 3)
+  assert.equal(aenderungenLesen(null).size, 0)
 })

@@ -214,6 +214,9 @@ class Dokument(Base):
     aufnahme_am: Mapped[date | None] = mapped_column(Date)
     dauer_sekunden: Mapped[int | None] = mapped_column(Integer)
     medien_url: Mapped[str | None] = mapped_column(Text)  # direkte Videodatei, kann ablaufen
+    # Erscheinungsdatum und woher es stammt: "tuwel", "last-modified" oder "aufnahme"
+    erschienen_am: Mapped[datetime | None] = mapped_column(DateTime)
+    erschienen_quelle: Mapped[str | None] = mapped_column(String(20))
     erstellt_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     geaendert_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     zuletzt_gesehen: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

@@ -261,3 +261,20 @@ export function seitenAnalyse(html, basis = TUWEL) {
     .filter((d) => d && d !== eigen)
   return { iframes: [...new Set(iframes)], lti, domains: [...new Set(externe)].slice(0, 10) }
 }
+
+// --- Erscheinungsdatum ------------------------------------------------------------------------
+
+/**
+ * Antwort von core_course_get_updates_since auswerten: je Aktivität (cmId) die Unix-Zeit der
+ * neuesten Datei (Inhalt, Aufgaben-Anhänge, Beschreibung) und der letzten Einstellungsänderung.
+ */
+export function aenderungenLesen(daten) {
+  const ergebnis = new Map()
+  for (const instanz of daten?.instances || []) {
+    if (instanz.contextlevel !== 'module') continue
+    const zeiten = Object.fromEntries((instanz.updates || []).map((u) => [u.name, Number(u.timeupdated) || null]))
+    const dateien = zeiten.contentfiles ?? zeiten.introattachmentfiles ?? zeiten.introfiles ?? null
+    ergebnis.set(Number(instanz.id), { dateien, einstellungen: zeiten.configuration ?? null })
+  }
+  return ergebnis
+}

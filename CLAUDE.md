@@ -110,6 +110,11 @@ cd frontend; npm run build
   Opencast-Zugriff, daher keine zusätzlichen Host-Berechtigungen. Jede Episode ist ein `Dokument` mit
   `episode_id` (Schlüssel `opencast:<id>`), `aufnahme_am`, `dauer_sekunden`, `medien_url`; Episodenseiten
   werden nur für neue Aufzeichnungen ohne Dauer geöffnet.
+- Erscheinungsdatum (`Dokument.erschienen_am` + `erschienen_quelle`): Dateien zuerst TUWEL-Zeit der Aktivität aus
+  `core_course_get_updates_since` (nur wenn die Aktivität genau eine Datei hat), sonst `Last-Modified`;
+  LectureTube-Aufzeichnungen das Aufnahmedatum; andere Video-Links die TUWEL-Zeit der Einstellungen.
+  Fehlende Daten fordert der Hub mit `datum_fehlt` an, die Erweiterung holt nur den Kopf (HEAD) und
+  schickt sie als `nachtrag` – das ändert keinen Status. „Neu seit letztem Sync“ = Status neu/geaendert.
 - Eine in der LVA gespeicherte `tuwel_kurs_id` gilt nur bei passendem Semester; bei Zuordnungswechsel
   ziehen die Unterlagen samt Dateien um (`setze_kurs_lva`).
 - Geheimnisse nur in `.env` (ignoriert); `.env.example` bleibt leer (Test + pre-commit-Hook prüfen das).

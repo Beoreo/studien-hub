@@ -177,32 +177,50 @@ function Unterlagen({ dokumente, lvas }) {
   return (
     <section className="formular">
       <h2>Unterlagen</h2>
+      <p className="hinweis">
+        Neueste zuerst nach Erscheinungsdatum. Hervorgehoben ist, was der letzte Sync neu gebracht oder geändert hat.
+      </p>
       {[...nachLva.entries()].map(([lvaId, liste]) => {
+        // Die API liefert bereits nach Erscheinungsdatum sortiert (neueste zuerst, ohne Datum am Ende)
         const dateien = liste.filter((d) => !d.ist_link)
         const videos = liste.filter((d) => d.ist_link)
         const dauer = videos.reduce((summe, v) => summe + (v.dauer_sekunden || 0), 0)
         const ohneDauer = videos.filter((v) => !v.dauer_sekunden).length
+        const frisch = liste.filter((d) => d.neu_seit_sync).length
         return (
-          <details key={lvaId} className="lva-unterlagen">
+          <details key={lvaId} className="lva-unterlagen" open={frisch > 0}>
             <summary>
               {lvaName(lvaId)} – {dateien.length} Dateien, {videoZusammenfassung(videos.length, dauer, ohneDauer)}
-              {liste.some((d) => d.status !== 'unveraendert') && <span className="marke">neu/geändert</span>}
+              {frisch > 0 && <span className="marke">{frisch} neu/geändert</span>}
             </summary>
             {dateien.length > 0 && (
               <table className="tabelle">
+                <thead>
+                  <tr>
+                    <th>Datei</th>
+                    <th>Erschienen</th>
+                    <th>Sync</th>
+                    <th>Abschnitt</th>
+                    <th>Typ</th>
+                    <th />
+                  </tr>
+                </thead>
                 <tbody>
                   {dateien.map((d) => (
-                    <tr key={d.id}>
-                      <td>{d.abschnitt}</td>
+                    <tr key={d.id} className={d.neu_seit_sync ? 'frisch' : ''}>
                       <td>
+                        <Marke dokument={d} />
                         <a href={api.dokumentUrl(d.id)} target="_blank" rel="noreferrer">
                           {d.dateiname}
                         </a>
                       </td>
+                      <td>
+                        <Erschienen dokument={d} />
+                      </td>
+                      <td className="hinweis">{zeit(d.sync_am)}</td>
+                      <td className="hinweis">{d.abschnitt}</td>
                       <td>{TYP_NAME[d.typ] || d.typ}</td>
-                      <td className="hinweis">{groesse(d.groesse)}</td>
-                      <td>{d.status !== 'unveraendert' && <span className="marke">{d.status === 'neu' ? 'neu' : 'geändert'}</span>}</td>
-                      <td className="hinweis">{zeit(d.geaendert_am)}</td>
+                      <td className="hinweis rechts">{groesse(d.groesse)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -215,16 +233,17 @@ function Unterlagen({ dokumente, lvas }) {
                   <thead>
                     <tr>
                       <th>Titel</th>
-                      <th>Aufnahme</th>
+                      <th>Erschienen</th>
+                      <th>Sync</th>
                       <th>Dauer</th>
                       <th>Abschnitt</th>
-                      <th />
                     </tr>
                   </thead>
                   <tbody>
                     {videos.map((v) => (
-                      <tr key={v.id}>
+                      <tr key={v.id} className={v.neu_seit_sync ? 'frisch' : ''}>
                         <td>
+                          <Marke dokument={v} />
                           <a href={v.url} target="_blank" rel="noreferrer">
                             🎥 {v.dateiname}
                           </a>
@@ -234,10 +253,12 @@ function Unterlagen({ dokumente, lvas }) {
                             </a>
                           )}
                         </td>
-                        <td>{tag(v.aufnahme_am)}</td>
+                        <td>
+                          <Erschienen dokument={v} />
+                        </td>
+                        <td className="hinweis">{zeit(v.sync_am)}</td>
                         <td>{laufzeit(v.dauer_sekunden) || <span className="hinweis">unbekannt</span>}</td>
                         <td className="hinweis">{v.abschnitt}</td>
-                        <td>{v.status === 'neu' && <span className="marke">neu</span>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -249,6 +270,30 @@ function Unterlagen({ dokumente, lvas }) {
       })}
     </section>
   )
+}
+
+// Woher das Erscheinungsdatum stammt
+const QUELLEN = {
+  tuwel: { kurz: 'TUWEL', lang: 'Datum, das TUWEL für die Aktivität meldet (hinzugefügt/geändert)' },
+  'last-modified': { kurz: 'Datei', lang: 'Last-Modified-Angabe der Datei' },
+  aufnahme: { kurz: 'Aufnahme', lang: 'Aufnahmedatum der Aufzeichnung' },
+}
+
+function Erschienen({ dokument }) {
+  if (!dokument.erschienen_am) return <span className="hinweis" title="Noch kein Datum – kommt beim nächsten Sync">–</span>
+  const quelle = QUELLEN[dokument.erschienen_quelle] || { kurz: dokument.erschienen_quelle, lang: '' }
+  // Aufnahmedaten haben keine Uhrzeit
+  const text = dokument.erschienen_quelle === 'aufnahme' ? tag(dokument.erschienen_am) : zeit(dokument.erschienen_am)
+  return (
+    <span title={`Quelle: ${quelle.lang}`}>
+      {text} <span className="quelle">{quelle.kurz}</span>
+    </span>
+  )
+}
+
+function Marke({ dokument }) {
+  if (!dokument.neu_seit_sync) return null
+  return <span className="marke vorne">{dokument.status === 'geaendert' ? 'geändert' : 'neu'}</span>
 }
 
 export default function TuwelSync({ lvas, onStatus }) {

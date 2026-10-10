@@ -86,32 +86,50 @@ export async function sammleEintraege(tuwel, kursId, melde = () => {}) {
   const eintraege = []
   const fehler = []
   const hinweise = []
+  // Änderungszeiten, die TUWEL selbst liefert – fehlen sie, bleibt Last-Modified als Quelle
+  let zeiten = new Map()
+  try {
+    zeiten = await tuwel.aenderungen(kursId)
+  } catch (fehlerObjekt) {
+    if (fehlerObjekt instanceof NichtEingeloggt) throw fehlerObjekt
+    hinweise.push(`TUWEL-Änderungsdaten nicht verfügbar (${fehlerObjekt.message}) – Datum aus Last-Modified`)
+  }
   for (const akt of aktivitaeten) {
     const art = klassifiziere(akt)
     if (!art) continue
     const basis = { cm_id: akt.cmId, abschnitt: akt.abschnitt, aktivitaet: akt.name }
+    const tuwelZeit = zeiten.get(akt.cmId) || {}
     try {
       if (art === 'opencast' && akt.url) {
         const ergebnis = await opencastEintraege(tuwel, akt, basis)
-        eintraege.push(...ergebnis.eintraege)
+        // Aufzeichnungen datiert das Aufnahmedatum; ein einzelner Link bekommt das TUWEL-Datum
+        eintraege.push(...ergebnis.eintraege.map((e) => (e.episode_id ? e : { ...e, tuwel_zeit: tuwelZeit.einstellungen })))
         hinweise.push(...ergebnis.hinweise)
       } else if (art === 'video') {
-        if (akt.url) eintraege.push({ ...basis, art: 'video', url: akt.url })
+        if (akt.url) eintraege.push({ ...basis, art: 'video', url: akt.url, tuwel_zeit: tuwelZeit.einstellungen })
       } else if (art === 'datei') {
         const ziel = await tuwel.aufloesen(`${tuwel.basis}/mod/resource/view.php?id=${akt.cmId}&redirect=1`)
         const info = dateiInfoAusUrl(ziel.url)
         const dateiname = dateinameAusKopf(ziel.disposition) || info.dateiname
-        if (istVideoDatei(dateiname, ziel.inhaltstyp)) eintraege.push({ ...basis, art: 'video', url: ohneAbfrage(ziel.url) })
-        else eintraege.push({ ...basis, art: 'datei', url: ohneAbfrage(ziel.url), dateiname, unterordner: '' })
+        const datum = { tuwel_zeit: tuwelZeit.dateien, last_modified: ziel.lastModified }
+        if (istVideoDatei(dateiname, ziel.inhaltstyp)) eintraege.push({ ...basis, art: 'video', url: ohneAbfrage(ziel.url), ...datum })
+        else eintraege.push({ ...basis, art: 'datei', url: ohneAbfrage(ziel.url), dateiname, unterordner: '', ...datum })
       } else if (art === 'link' && akt.url) {
         const seite = await tuwel.html(akt.url)
         const ziel = zielDerUrlAktivitaet(seite.url, seite.html, tuwel.basis)
-        if (ziel && istVideoUrl(ziel)) eintraege.push({ ...basis, art: 'video', url: ziel })
+        if (ziel && istVideoUrl(ziel)) eintraege.push({ ...basis, art: 'video', url: ziel, tuwel_zeit: tuwelZeit.einstellungen })
       } else if (art === 'seite' && akt.url) {
         const seite = await tuwel.html(akt.url)
-        for (const link of pluginfileLinks(seite.html, tuwel.basis)) {
-          if (istVideoDatei(link.dateiname)) eintraege.push({ ...basis, art: 'video', url: link.url })
-          else eintraege.push({ ...basis, art: 'datei', url: link.url, dateiname: link.dateiname, unterordner: link.unterordner })
+        const links = pluginfileLinks(seite.html, tuwel.basis)
+        // TUWEL meldet nur eine Zeit je Aktivität: eindeutig nur, wenn sie genau eine Datei enthält
+        const zeit = links.length === 1 ? tuwelZeit.dateien : undefined
+        for (const link of links) {
+          if (istVideoDatei(link.dateiname)) eintraege.push({ ...basis, art: 'video', url: link.url, tuwel_zeit: zeit })
+          else {
+            eintraege.push({
+              ...basis, art: 'datei', url: link.url, dateiname: link.dateiname, unterordner: link.unterordner, tuwel_zeit: zeit,
+            })
+          }
         }
       }
     } catch (fehlerObjekt) {
@@ -173,12 +191,28 @@ export async function synchronisiere({ tuwel, hub, melde = () => {} }) {
             statistik.fehler.push(`${kurs.name}: Details der Aufzeichnungen: ${fehler.message}`)
           }
         }
+        // Bereits gespeicherte Dateien ohne Datum: nur den Last-Modified-Kopf nachholen
+        const ohneDatum = eintraege.filter((e) => (abgleich.datum_fehlt || []).includes(e.url))
+        if (ohneDatum.length) {
+          melde(`${titel}: ergänze Datum von ${ohneDatum.length} Dateien …`)
+          const nachtrag = []
+          for (const e of ohneDatum) {
+            try {
+              const { lastModified } = await tuwel.kopf(e.url)
+              if (lastModified) nachtrag.push({ ...e, last_modified: lastModified })
+            } catch (fehler) {
+              if (fehler instanceof NichtEingeloggt) throw fehler
+            }
+          }
+          if (nachtrag.length) await hub.inhalt(kurs.id, nachtrag, { nachtrag: true })
+        }
+
         for (const [nr, url] of abgleich.herunterladen.entries()) {
           const eintrag = eintraege.find((e) => e.url === url)
           melde(`${titel}: lade ${nr + 1}/${abgleich.herunterladen.length} ${eintrag.dateiname}`)
           try {
-            const blob = await tuwel.datei(url)
-            const { status } = await hub.datei(kurs.id, eintrag, blob)
+            const { blob, lastModified } = await tuwel.datei(url)
+            const { status } = await hub.datei(kurs.id, { ...eintrag, last_modified: lastModified || eintrag.last_modified }, blob)
             statistik[status] += 1
           } catch (fehler) {
             if (fehler instanceof NichtEingeloggt) throw fehler

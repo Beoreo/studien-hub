@@ -1,5 +1,5 @@
 // Zugriff auf TUWEL mit der Sitzung des eingeloggten Browsers (kein Token nötig).
-import { NichtEingeloggt, TUWEL, istLoginSeite, sesskeyAusHtml } from './lib.js'
+import { NichtEingeloggt, TUWEL, aenderungenLesen, istLoginSeite, sesskeyAusHtml } from './lib.js'
 
 export class Tuwel {
   constructor({ fetchFn = (...a) => fetch(...a), basis = TUWEL } = {}) {
@@ -55,6 +55,23 @@ export class Tuwel {
     return this.ajax('core_courseformat_get_state', { courseid: kursId })
   }
 
+  /**
+   * Wann TUWEL die Aktivitäten eines Kurses zuletzt geändert hat (Unix-Zeit), je Aktivität:
+   * { dateien: neueste Datei im Inhalts-/Beschreibungsbereich, einstellungen: Konfiguration }.
+   */
+  async aenderungen(kursId) {
+    const daten = await this.ajax('core_course_get_updates_since', { courseid: kursId, since: 0 })
+    return aenderungenLesen(daten)
+  }
+
+  /** Nur den Last-Modified-Kopf einer Datei holen, ohne sie herunterzuladen. */
+  async kopf(url) {
+    let antwort = await this.fetch(url, { credentials: 'include', method: 'HEAD' })
+    if (!antwort.ok) antwort = await this.seite(url)
+    if (istLoginSeite(antwort.url)) throw new NichtEingeloggt()
+    return { lastModified: antwort.headers.get('last-modified') || null }
+  }
+
   async html(url) {
     const antwort = await this.seite(url)
     const html = await antwort.text()
@@ -71,12 +88,13 @@ export class Tuwel {
       url: antwort.url,
       inhaltstyp: antwort.headers.get('content-type') || '',
       disposition: antwort.headers.get('content-disposition') || '',
+      lastModified: antwort.headers.get('last-modified') || null,
     }
   }
 
   async datei(url) {
     const antwort = await this.seite(url)
     if (istLoginSeite(antwort.url)) throw new NichtEingeloggt()
-    return antwort.blob()
+    return { blob: await antwort.blob(), lastModified: antwort.headers.get('last-modified') || null }
   }
 }

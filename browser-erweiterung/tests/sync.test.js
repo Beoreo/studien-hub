@@ -49,9 +49,19 @@ function tuwelFetch({ eingeloggt = true, aufrufe = [] } = {}) {
         ] } }])
       }
       if (methodname === 'core_courseformat_get_state') return antwort([{ error: false, data: ZUSTAND }])
+      if (methodname === 'core_course_get_updates_since') {
+        return antwort([{ error: false, data: { instances: [
+          { contextlevel: 'module', id: 100, updates: [{ name: 'configuration', timeupdated: 1790000000 }, { name: 'contentfiles', timeupdated: 1791879300 }] },
+          { contextlevel: 'module', id: 101, updates: [{ name: 'contentfiles', timeupdated: 1791000000 }] },
+          { contextlevel: 'module', id: 102, updates: [{ name: 'configuration', timeupdated: 1790500000 }] },
+        ], warnings: [] } }])
+      }
     }
     if (url.includes('/mod/resource/view.php?id=100')) {
-      return antwort('', { url: `${T}/pluginfile.php/9/mod_resource/content/3/skript.pdf`, kopf: { 'content-type': 'application/pdf' } })
+      return antwort('', {
+        url: `${T}/pluginfile.php/9/mod_resource/content/3/skript.pdf`,
+        kopf: { 'content-type': 'application/pdf', 'last-modified': 'Tue, 13 Oct 2026 08:15:00 GMT' },
+      })
     }
     if (url.includes('/mod/resource/view.php?id=104')) {
       return antwort('', { url: `${T}/pluginfile.php/9/mod_resource/content/1/vo.mp4`, kopf: { 'content-type': 'video/mp4' } })
@@ -63,7 +73,7 @@ function tuwelFetch({ eingeloggt = true, aufrufe = [] } = {}) {
     if (url === `${T}/mod/url/view.php?id=103`) {
       return antwort('<div class="urlworkaround"><a href="https://docs.python.org">x</a></div>', { url })
     }
-    if (url.includes('/pluginfile.php/')) return antwort(`INHALT:${url}`, { url })
+    if (url.includes('/pluginfile.php/')) return antwort(`INHALT:${url}`, { url, kopf: { 'last-modified': 'Fri, 02 Oct 2026 07:30:00 GMT' } })
     return antwort('nicht gefunden', { status: 404, url })
   }
 }
@@ -71,7 +81,7 @@ function tuwelFetch({ eingeloggt = true, aufrufe = [] } = {}) {
 // --- nachgebauter Hub ------------------------------------------------------------------
 
 function hubAttrappe({ bekannt = [] } = {}) {
-  const protokoll = { kurse: null, inhalte: [], dateien: [], ende: null, fehler: null }
+  const protokoll = { kurse: null, inhalte: [], nachtraege: [], dateien: [], ende: null, fehler: null }
   return {
     protokoll,
     pruefen: async () => ({ ok: true }),
@@ -79,13 +89,19 @@ function hubAttrappe({ bekannt = [] } = {}) {
       protokoll.kurse = kurse
       return { kurse: kurse.map((k) => ({ ...k, lva_name: k.id === 1 ? 'EP1' : null, synchronisieren: k.id === 1 })) }
     },
-    inhalt: async (kursId, eintraege) => {
+    inhalt: async (kursId, eintraege, optionen = {}) => {
+      if (optionen.nachtrag) {
+        protokoll.nachtraege.push(eintraege)
+        return { herunterladen: [], unveraendert: 0, videos_neu: 0, details: [], datum_fehlt: [] }
+      }
       protokoll.inhalte.push({ kursId, eintraege })
       const dateien = eintraege.filter((e) => e.art === 'datei')
       return {
         herunterladen: dateien.filter((e) => !bekannt.includes(e.url)).map((e) => e.url),
         unveraendert: dateien.filter((e) => bekannt.includes(e.url)).length,
         videos_neu: eintraege.filter((e) => e.art === 'video').length,
+        // wie der Hub: bekannte Dateien ohne TUWEL-Datum brauchen Last-Modified
+        datum_fehlt: dateien.filter((e) => bekannt.includes(e.url) && !e.tuwel_zeit && !e.last_modified).map((e) => e.url),
       }
     },
     datei: async (kursId, eintrag, blob) => {
@@ -136,6 +152,15 @@ test('kompletter Lauf: nur zugeordnete Kurse, nur angeforderte Dateien', async (
   assert.deepEqual(hub.protokoll.dateien.map((d) => d.eintrag.dateiname), ['blatt1.pdf']) // Skript bekannt
   assert.match(hub.protokoll.dateien[0].inhalt, /^INHALT:/)
   assert.deepEqual(ergebnis.statistik, { kurse: 1, neu: 1, geaendert: 0, unveraendert: 1, videos: 2, fehler: [], hinweise: [] })
+
+  // Erscheinungsdatum: TUWEL-Zeiten je Aktivität, Last-Modified aus den Antworten
+  const gesendet = Object.fromEntries(hub.protokoll.inhalte[0].eintraege.map((e) => [e.cm_id, e]))
+  assert.equal(gesendet[100].tuwel_zeit, 1791879300) // Ressource: Dateizeit, nicht Einstellungen
+  assert.equal(gesendet[100].last_modified, 'Tue, 13 Oct 2026 08:15:00 GMT')
+  assert.equal(gesendet[101].tuwel_zeit, 1791000000) // Ordner mit genau einer Datei
+  assert.equal(gesendet[102].tuwel_zeit, 1790500000) // Video-Link: Einstellungen
+  assert.equal(hub.protokoll.dateien[0].eintrag.last_modified, 'Fri, 02 Oct 2026 07:30:00 GMT') // vom Download
+  assert.deepEqual(hub.protokoll.nachtraege, []) // Skript hat ein TUWEL-Datum, nichts nachzutragen
   assert.deepEqual(hub.protokoll.ende, ergebnis.statistik)
   assert.ok(meldungen.length > 3)
 })
@@ -204,4 +229,28 @@ test('Hub-Client: Schlüssel im Kopf, verständliche Fehler', async () => {
   await assert.rejects(() => weg.pruefen(), /nicht erreichbar/)
   const konflikt = new Hub({ fetchFn: async () => antwort({ detail: 'Kurs ist keiner LVA zugeordnet' }, { status: 409 }) })
   await assert.rejects(() => konflikt.inhalt(1, []), /keiner LVA zugeordnet/)
+})
+
+
+test('gespeicherte Dateien ohne Datum: nur Kopf abfragen und als Nachtrag senden', async () => {
+  const aufrufe = []
+  const basis = tuwelFetch({ aufrufe })
+  // ohne TUWEL-Änderungsdaten (z. B. Funktion gesperrt)
+  const fetchFn = async (url, optionen = {}) =>
+    optionen.body?.includes?.('core_course_get_updates_since') ? antwort('verboten', { status: 403, url }) : basis(url, optionen)
+  const skript = `${T}/pluginfile.php/9/mod_resource/content/3/skript.pdf`
+  const ordnerDatei = `${T}/pluginfile.php/8/mod_folder/content/0/Teil%201/blatt1.pdf`
+  const hub = hubAttrappe({ bekannt: [skript, ordnerDatei] })
+  const ergebnis = await synchronisiere({ tuwel: new Tuwel({ fetchFn }), hub })
+
+  assert.equal(ergebnis.status, 'ok')
+  assert.ok(ergebnis.statistik.hinweise.some((h) => h.includes('Änderungsdaten nicht verfügbar')))
+  assert.deepEqual(hub.protokoll.dateien, []) // nichts erneut heruntergeladen
+  // Das Skript brachte Last-Modified schon beim Auflösen mit; nur die Ordnerdatei wird nachgetragen
+  assert.equal(hub.protokoll.inhalte[0].eintraege.find((e) => e.url === skript).last_modified, 'Tue, 13 Oct 2026 08:15:00 GMT')
+  const nachtrag = hub.protokoll.nachtraege[0]
+  assert.deepEqual(nachtrag.map((e) => [e.url, e.last_modified]), [[ordnerDatei, 'Fri, 02 Oct 2026 07:30:00 GMT']])
+  // für die Ordnerdatei genügte ein HEAD-Aufruf
+  assert.ok(aufrufe.some((a) => a.url === ordnerDatei && a.methode === 'HEAD'))
+  assert.ok(!aufrufe.some((a) => a.url === ordnerDatei && a.methode === 'GET'))
 })

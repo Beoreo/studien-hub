@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..config import ERWEITERUNG_ORDNER, UNTERLAGEN_ORDNER
 from ..db import get_session
-from ..models import ZUORDNUNG_AUS, ZUORDNUNG_AUTO, ZUORDNUNG_MANUELL, Dokument, Lva, TuwelKurs
+from ..models import DOK_GEAENDERT, DOK_NEU, ZUORDNUNG_AUS, ZUORDNUNG_AUTO, ZUORDNUNG_MANUELL, Dokument, Lva, TuwelKurs
 from ..tuwel_sync import (
     Eintrag,
     datei_speichern,
@@ -63,6 +63,8 @@ class EintragIn(BaseModel):
     dauer_text: str = ""
     dauer_sekunden: int | None = Field(None, ge=0)
     medien_url: str | None = None
+    tuwel_zeit: int | None = Field(None, ge=0)  # Unix-Zeit aus core_course_get_updates_since
+    last_modified: str | None = Field(None, max_length=100)
 
 
 class InhaltIn(BaseModel):
@@ -197,7 +199,10 @@ def kurs_zuordnen(kurs_id: int, daten: ZuordnungIn, session: Session = Depends(g
 
 @router.get("/dokumente")
 def dokumente_auflisten(lva_id: int | None = None, session: Session = Depends(get_session)):
-    abfrage = select(Dokument).order_by(Dokument.lva_id, Dokument.abschnitt, Dokument.aufnahme_am, Dokument.dateiname)
+    # pro LVA nach Erscheinungsdatum, neueste zuerst; ohne Datum ans Ende
+    abfrage = select(Dokument).order_by(
+        Dokument.lva_id, Dokument.erschienen_am.is_(None), Dokument.erschienen_am.desc(), Dokument.dateiname
+    )
     if lva_id is not None:
         abfrage = abfrage.where(Dokument.lva_id == lva_id)
     return [
@@ -208,6 +213,10 @@ def dokumente_auflisten(lva_id: int | None = None, session: Session = Depends(ge
             "status": d.status, "erstellt_am": d.erstellt_am, "geaendert_am": d.geaendert_am,
             "episode_id": d.episode_id, "aufnahme_am": d.aufnahme_am, "dauer_sekunden": d.dauer_sekunden,
             "medien_url": d.medien_url,
+            "erschienen_am": d.erschienen_am, "erschienen_quelle": d.erschienen_quelle,
+            "sync_am": d.geaendert_am,  # wann der Hub die aktuelle Fassung bekommen hat
+            # Ergebnis des letzten Sync-Laufs: neu oder geändert
+            "neu_seit_sync": d.status in (DOK_NEU, DOK_GEAENDERT),
         }
         for d in session.scalars(abfrage)
     ]
