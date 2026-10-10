@@ -26,6 +26,7 @@ from app.config import PROJEKT_ORDNER, TUWEL_URL, tuwel_token  # noqa: E402
 from app.tuwel_token import schreibe_env_wert  # noqa: E402
 
 APP_USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) MoodleMobile 4.4.0 (44000)"
+NUR_APP_UA = False  # per --nur-app-ua: jeder Aufruf mit Token nur mit App-User-Agent
 LOGIN_TYPEN = {1: "1 = Login in der App", 2: "2 = Login im Browser (SSO)", 3: "3 = eingebetteter Browser"}
 
 
@@ -101,7 +102,10 @@ def schritt2(http: httpx.Client) -> None:
 def teste_token(http: httpx.Client, bezeichnung: str, token: str) -> bool:
     """Ruft core_webservice_get_site_info ohne und mit App-User-Agent auf; True, wenn einer klappt."""
     ok = False
-    for name, kopf in (("ohne App-User-Agent", {}), ("mit App-User-Agent", {"User-Agent": APP_USER_AGENT})):
+    varianten = [("mit App-User-Agent", {"User-Agent": APP_USER_AGENT})]
+    if not NUR_APP_UA:
+        varianten.insert(0, ("ohne App-User-Agent", {}))
+    for name, kopf in varianten:
         antwort = http.post(
             f"{TUWEL_URL}/webservice/rest/server.php",
             data={"wstoken": token, "wsfunction": "core_webservice_get_site_info", "moodlewsrestformat": "json"},
@@ -150,6 +154,7 @@ def kurzstatus(http: httpx.Client, token: str) -> str:
         d = http.post(
             f"{TUWEL_URL}/webservice/rest/server.php",
             data={"wstoken": token, "wsfunction": "core_webservice_get_site_info", "moodlewsrestformat": "json"},
+            headers={"User-Agent": APP_USER_AGENT} if NUR_APP_UA else {},
         ).json()
     except (httpx.HTTPError, ValueError) as fehler:
         return f"keine Antwort ({type(fehler).__name__})"
@@ -160,7 +165,8 @@ def kurzstatus(http: httpx.Client, token: str) -> str:
 
 def beobachten(http: httpx.Client, token: str, takt: int, minuten: int) -> None:
     """Misst, wie lange der Token gilt: fragt im Takt nach und meldet jede Zustandsänderung."""
-    print(f"\n== Lebensdauer: alle {takt} s, höchstens {minuten} min (Strg+C beendet) ==")
+    ua = "nur App-User-Agent" if NUR_APP_UA else "Standard-User-Agent"
+    print(f"\n== Lebensdauer: alle {takt} s, höchstens {minuten} min, {ua} (Strg+C beendet) ==")
     beginn = time.monotonic()
     letzter = None
     try:
@@ -187,7 +193,10 @@ def main() -> int:
     parser.add_argument("--beobachten", action="store_true", help="Lebensdauer des Tokens messen")
     parser.add_argument("--takt", type=int, default=20, help="Sekunden zwischen zwei Abfragen")
     parser.add_argument("--minuten", type=int, default=45, help="höchstens so lange beobachten")
+    parser.add_argument("--nur-app-ua", action="store_true", help="alle Aufrufe mit Token nur mit App-User-Agent")
     argumente = parser.parse_args()
+    global NUR_APP_UA
+    NUR_APP_UA = argumente.nur_app_ua
 
     link_token = schritt1(argumente.passport) if argumente.link else None
     gespeicherter_token()
