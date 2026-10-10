@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api } from '../api.js'
+import { api, videoZusammenfassung } from '../api.js'
 
 // Markierungen werden einmal pro Semester gesetzt und gelten für alle Termine der LVA.
 export default function LvaListe({ lvas, onGeaendert }) {
@@ -44,6 +44,7 @@ export default function LvaListe({ lvas, onGeaendert }) {
                   <th title="Aufzeichnung">🎥 Aufzeichnung</th>
                   <th>TUWEL-Kurs-ID</th>
                   <th>Termine</th>
+                  <th title="Aufzeichnungen aus TUWEL (Anzahl und Gesamtdauer)">Videos</th>
                 </tr>
               </thead>
               <tbody>
@@ -81,6 +82,9 @@ export default function LvaListe({ lvas, onGeaendert }) {
                         />
                       </td>
                       <td className="mitte">{lva.anzahl_termine}</td>
+                      <td className="rechts">
+                        {videoZusammenfassung(lva.anzahl_videos, lva.video_dauer_sekunden, lva.videos_ohne_dauer)}
+                      </td>
                     </tr>
                   ))}
               </tbody>

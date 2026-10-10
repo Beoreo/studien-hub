@@ -97,13 +97,14 @@ def ordne_kurs_zu(session: Session, kurs: TuwelKurs) -> Lva | None:
     if kurs.zuordnung != ZUORDNUNG_AUTO:
         return kurs.lva
 
-    # In der LVA-Liste von Hand eingetragene TUWEL-Kurs-ID hat Vorrang
-    lva = session.scalar(select(Lva).where(Lva.tuwel_kurs_id == kurs.id))
-    if lva:
-        return lva
-
     text = " ".join(filter(None, [kurs.kurzname, kurs.name, kurs.idnumber]))
     semester = semester_aus_text(text)
+
+    # In der LVA-Liste eingetragene TUWEL-Kurs-ID hat Vorrang – aber nur, wenn das Semester passt
+    # (sonst hielte ein einmal falsch gesetzter Wert den Kurs dauerhaft an der falschen LVA fest)
+    for lva in session.scalars(select(Lva).where(Lva.tuwel_kurs_id == kurs.id)):
+        if semester is None or lva.semester == semester:
+            return lva
     nummern = LVA_NUMMER.findall(text)
     kandidaten: list[Lva] = []
     if nummern:
@@ -143,13 +144,43 @@ def kurse_registrieren(session: Session, kurse: list[dict]) -> list[TuwelKurs]:
         session.flush()
         lva = ordne_kurs_zu(session, kurs)
         if kurs.zuordnung == ZUORDNUNG_AUTO:
-            kurs.lva = lva
-            if lva is not None and lva.tuwel_kurs_id is None:
-                lva.tuwel_kurs_id = kurs.id
+            setze_kurs_lva(session, kurs, lva)
         ergebnis.append(kurs)
     setze_einstellung(session, LETZTER_LAUF, jetzt.isoformat(timespec="seconds"))
     session.commit()
     return ergebnis
+
+
+def setze_kurs_lva(session: Session, kurs: TuwelKurs, lva: Lva | None) -> None:
+    """Ordnet den Kurs einer LVA zu; bei einem Wechsel ziehen die bisherigen Unterlagen mit um."""
+    alt = kurs.lva
+    kurs.lva = lva
+    if lva is None:
+        return
+    # Veraltete Verweise anderer LVAs auf diesen Kurs entfernen, damit sie nicht wieder greifen
+    for andere in session.scalars(select(Lva).where(Lva.tuwel_kurs_id == kurs.id, Lva.id != lva.id)):
+        andere.tuwel_kurs_id = None
+    if lva.tuwel_kurs_id is None:
+        lva.tuwel_kurs_id = kurs.id
+    if alt is not None and alt.id != lva.id:
+        dokumente_umziehen(session, kurs, alt, lva)
+
+
+def dokumente_umziehen(session: Session, kurs: TuwelKurs, alt: Lva, neu: Lva) -> int:
+    """Hängt die Unterlagen eines Kurses an eine andere LVA und verschiebt die Dateien in deren Ordner."""
+    alter_ordner, neuer_ordner = lva_ordner(alt).as_posix(), lva_ordner(neu).as_posix()
+    anzahl = 0
+    for doc in session.scalars(select(Dokument).where(Dokument.tuwel_kurs_id == kurs.id)):
+        doc.lva_id = neu.id
+        if doc.pfad and doc.pfad.startswith(alter_ordner + "/"):
+            neuer_pfad = neuer_ordner + doc.pfad[len(alter_ordner):]
+            quelle, ziel = UNTERLAGEN_ORDNER / doc.pfad, UNTERLAGEN_ORDNER / neuer_pfad
+            if quelle.exists() and not ziel.exists():
+                ziel.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(quelle, ziel)
+            doc.pfad = neuer_pfad
+        anzahl += 1
+    return anzahl
 
 
 def soll_synchronisiert_werden(kurs: TuwelKurs) -> bool:
@@ -165,14 +196,61 @@ class Eintrag:
     art: str = "datei"  # "datei" oder "video"
     abschnitt: str = ""
     aktivitaet: str = ""
-    dateiname: str = ""
+    dateiname: str = ""  # bei Aufzeichnungen der Titel
     unterordner: str = ""
+    # Aufzeichnungen aus LectureTube (mod_opencast)
+    episode_id: str | None = None
+    datum_text: str = ""
+    dauer_text: str = ""
+    dauer_sekunden: int | None = None
+    medien_url: str | None = None
 
     @property
     def schluessel(self) -> str:
+        if self.episode_id:
+            return f"opencast:{self.episode_id}"
         if self.art == "video":
             return self.url
         return f"{self.unterordner}/{self.dateiname}" if self.unterordner else self.dateiname
+
+    @property
+    def dauer(self) -> int | None:
+        return self.dauer_sekunden if self.dauer_sekunden else dauer_aus_text(self.dauer_text)
+
+
+def dauer_aus_text(text: str | None) -> int | None:
+    """„1:23:45“ oder „45:07“ (Format von mod_opencast) in Sekunden."""
+    teile = (text or "").strip().split(":")
+    if len(teile) not in (2, 3) or not all(t.isdigit() for t in teile):
+        return None
+    werte = [int(t) for t in teile]
+    if len(werte) == 2:
+        werte.insert(0, 0)
+    stunden, minuten, sekunden = werte
+    return stunden * 3600 + minuten * 60 + sekunden
+
+
+MONATE = {
+    "jan": 1, "jän": 1, "feb": 2, "mär": 3, "mar": 3, "apr": 4, "mai": 5, "may": 5, "jun": 6, "jul": 7,
+    "aug": 8, "sep": 9, "okt": 10, "oct": 10, "nov": 11, "dez": 12, "dec": 12,
+}
+
+
+def datum_aus_text(text: str | None) -> date | None:
+    """Aufnahmedatum aus dem kurzen Moodle-Datumsformat: „13.10.2026“, „13/10/26“, „2026-10-13“, „13. Oktober 2026“."""
+    text = (text or "").strip()
+    try:
+        if m := re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", text):
+            return date(int(m[1]), int(m[2]), int(m[3]))
+        if m := re.search(r"\b(\d{1,2})[./](\d{1,2})[./](\d{2,4})\b", text):
+            jahr = int(m[3]) + (2000 if len(m[3]) == 2 else 0)
+            return date(jahr, int(m[2]), int(m[1]))
+        if m := re.search(r"\b(\d{1,2})\.?\s+([A-Za-zÄÖÜäöü]+)\.?\s+(\d{4})\b", text):
+            monat = MONATE.get(m[2][:3].lower())
+            return date(int(m[3]), monat, int(m[1])) if monat else None
+    except ValueError:
+        return None
+    return None
 
 
 def dateityp(dateiname: str) -> str:
@@ -180,26 +258,53 @@ def dateityp(dateiname: str) -> str:
     return DATEI_TYPEN.get(endung, "sonstiges")
 
 
-def inhalt_abgleichen(session: Session, kurs: TuwelKurs, eintraege: list[Eintrag]) -> dict:
-    """Trägt Videos als Links ein und liefert die URLs der Dateien, die heruntergeladen werden müssen."""
+def inhalt_abgleichen(session: Session, kurs: TuwelKurs, eintraege: list[Eintrag], nachtrag: bool = False) -> dict:
+    """Trägt Videos als Links ein und liefert die URLs der Dateien, die heruntergeladen werden müssen.
+
+    `nachtrag=True`: zweiter Aufruf im selben Lauf, der nur Details neuer Aufzeichnungen ergänzt.
+    """
     if not soll_synchronisiert_werden(kurs):
         raise ValueError(f"Kurs {kurs.id} ist keiner LVA zugeordnet")
     jetzt = datetime.now()
     herunterladen: list[str] = []
+    details: list[str] = []  # neue Aufzeichnungen, deren Dauer die Erweiterung nachliefern soll
     unveraendert = videos_neu = 0
+
+    # Eine LectureTube-Serie wurde bisher als ein einziger Link gespeichert: durch die Episoden ersetzen
+    serien_cms = {e.cm_id for e in eintraege if e.episode_id}
+    if serien_cms:
+        for alt in session.scalars(select(Dokument).where(
+            Dokument.tuwel_cm_id.in_(serien_cms), Dokument.ist_link.is_(True), Dokument.episode_id.is_(None)
+        )):
+            session.delete(alt)
+        session.flush()
+
     for e in eintraege:
         doc = session.scalar(select(Dokument).where(Dokument.tuwel_cm_id == e.cm_id, Dokument.schluessel == e.schluessel))
         if e.art == "video":
             if doc is None:
                 doc = Dokument(
                     lva_id=kurs.lva_id, tuwel_kurs_id=kurs.id, tuwel_cm_id=e.cm_id, schluessel=e.schluessel,
-                    dateiname=e.aktivitaet or e.url, typ="video", ist_link=True, quelle_url=e.url, status=DOK_NEU,
+                    dateiname=e.dateiname or e.aktivitaet or e.url, typ="video", ist_link=True, quelle_url=e.url,
+                    status=DOK_NEU, episode_id=e.episode_id,
                 )
                 session.add(doc)
                 videos_neu += 1
             else:
-                doc.status = DOK_UNVERAENDERT
+                # Erneuter Sync fügt nichts doppelt hinzu, ergänzt aber fehlende Angaben.
+                # Beim Nachtrag im selben Lauf bleibt eine eben angelegte Aufzeichnung „neu“.
+                if not nachtrag:
+                    doc.status = DOK_UNVERAENDERT
+                doc.lva_id = kurs.lva_id
             doc.abschnitt, doc.aktivitaet, doc.zuletzt_gesehen = e.abschnitt, e.aktivitaet, jetzt
+            doc.quelle_url = e.url
+            if e.dateiname and (not doc.dateiname or doc.dateiname == doc.aktivitaet):
+                doc.dateiname = e.dateiname
+            doc.dauer_sekunden = e.dauer or doc.dauer_sekunden
+            doc.aufnahme_am = datum_aus_text(e.datum_text) or doc.aufnahme_am
+            doc.medien_url = e.medien_url or doc.medien_url
+            if e.episode_id and doc.dauer_sekunden is None and e.url not in details:
+                details.append(e.url)
             continue
 
         # Gleiche URL wie beim letzten Mal und Datei vorhanden: TUWEL ändert die URL bei jeder neuen Version
@@ -210,7 +315,7 @@ def inhalt_abgleichen(session: Session, kurs: TuwelKurs, eintraege: list[Eintrag
         elif e.url not in herunterladen:
             herunterladen.append(e.url)
     session.commit()
-    return {"herunterladen": herunterladen, "unveraendert": unveraendert, "videos_neu": videos_neu}
+    return {"herunterladen": herunterladen, "unveraendert": unveraendert, "videos_neu": videos_neu, "details": details}
 
 
 # --- Ablage der Dateien ---------------------------------------------------------------

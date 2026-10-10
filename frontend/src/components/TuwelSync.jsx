@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api } from '../api.js'
+import { api, laufzeit, videoZusammenfassung } from '../api.js'
 
 const zeit = (iso) => (iso ? new Date(iso).toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'short' }) : '–')
+const tag = (iso) => (iso ? new Date(iso).toLocaleDateString('de-AT') : '')
 const TYP_NAME = { pdf: 'PDF', folien: 'Folien', dokument: 'Dokument', sonstiges: 'Datei', video: 'Video' }
 
 function groesse(bytes) {
@@ -36,6 +37,16 @@ function Status({ status }) {
         Gesamt: {status.dateien} Dateien, {status.videos} Video-Links aus {status.kurse} Kursen
         {status.kurse_ohne_lva > 0 && <> · {status.kurse_ohne_lva} Kurse ohne LVA (siehe unten)</>}
       </p>
+      {e?.hinweise?.length > 0 && (
+        <details>
+          <summary className="hinweis">Was der letzte Lauf gefunden hat ({e.hinweise.length})</summary>
+          <ul className="hinweis">
+            {e.hinweise.map((h) => (
+              <li key={h}>{h}</li>
+            ))}
+          </ul>
+        </details>
+      )}
     </section>
   )
 }
@@ -166,39 +177,76 @@ function Unterlagen({ dokumente, lvas }) {
   return (
     <section className="formular">
       <h2>Unterlagen</h2>
-      {[...nachLva.entries()].map(([lvaId, liste]) => (
-        <details key={lvaId} className="lva-unterlagen">
-          <summary>
-            {lvaName(lvaId)} – {liste.filter((d) => !d.ist_link).length} Dateien, {liste.filter((d) => d.ist_link).length}{' '}
-            Videos
-            {liste.some((d) => d.status !== 'unveraendert') && <span className="marke">neu/geändert</span>}
-          </summary>
-          <table className="tabelle">
-            <tbody>
-              {liste.map((d) => (
-                <tr key={d.id}>
-                  <td>{d.abschnitt}</td>
-                  <td>
-                    {d.ist_link ? (
-                      <a href={d.url} target="_blank" rel="noreferrer">
-                        🎥 {d.dateiname}
-                      </a>
-                    ) : (
-                      <a href={api.dokumentUrl(d.id)} target="_blank" rel="noreferrer">
-                        {d.dateiname}
-                      </a>
-                    )}
-                  </td>
-                  <td>{TYP_NAME[d.typ] || d.typ}</td>
-                  <td className="hinweis">{groesse(d.groesse)}</td>
-                  <td>{d.status !== 'unveraendert' && <span className="marke">{d.status === 'neu' ? 'neu' : 'geändert'}</span>}</td>
-                  <td className="hinweis">{zeit(d.geaendert_am)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
-      ))}
+      {[...nachLva.entries()].map(([lvaId, liste]) => {
+        const dateien = liste.filter((d) => !d.ist_link)
+        const videos = liste.filter((d) => d.ist_link)
+        const dauer = videos.reduce((summe, v) => summe + (v.dauer_sekunden || 0), 0)
+        const ohneDauer = videos.filter((v) => !v.dauer_sekunden).length
+        return (
+          <details key={lvaId} className="lva-unterlagen">
+            <summary>
+              {lvaName(lvaId)} – {dateien.length} Dateien, {videoZusammenfassung(videos.length, dauer, ohneDauer)}
+              {liste.some((d) => d.status !== 'unveraendert') && <span className="marke">neu/geändert</span>}
+            </summary>
+            {dateien.length > 0 && (
+              <table className="tabelle">
+                <tbody>
+                  {dateien.map((d) => (
+                    <tr key={d.id}>
+                      <td>{d.abschnitt}</td>
+                      <td>
+                        <a href={api.dokumentUrl(d.id)} target="_blank" rel="noreferrer">
+                          {d.dateiname}
+                        </a>
+                      </td>
+                      <td>{TYP_NAME[d.typ] || d.typ}</td>
+                      <td className="hinweis">{groesse(d.groesse)}</td>
+                      <td>{d.status !== 'unveraendert' && <span className="marke">{d.status === 'neu' ? 'neu' : 'geändert'}</span>}</td>
+                      <td className="hinweis">{zeit(d.geaendert_am)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {videos.length > 0 && (
+              <>
+                <h3 className="unterueberschrift">Aufzeichnungen</h3>
+                <table className="tabelle">
+                  <thead>
+                    <tr>
+                      <th>Titel</th>
+                      <th>Aufnahme</th>
+                      <th>Dauer</th>
+                      <th>Abschnitt</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {videos.map((v) => (
+                      <tr key={v.id}>
+                        <td>
+                          <a href={v.url} target="_blank" rel="noreferrer">
+                            🎥 {v.dateiname}
+                          </a>
+                          {v.medien_url && (
+                            <a className="hinweis klein-link" href={v.medien_url} target="_blank" rel="noreferrer" title="Videodatei direkt (Link kann ablaufen)">
+                              Datei
+                            </a>
+                          )}
+                        </td>
+                        <td>{tag(v.aufnahme_am)}</td>
+                        <td>{laufzeit(v.dauer_sekunden) || <span className="hinweis">unbekannt</span>}</td>
+                        <td className="hinweis">{v.abschnitt}</td>
+                        <td>{v.status === 'neu' && <span className="marke">neu</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </details>
+        )
+      })}
     </section>
   )
 }

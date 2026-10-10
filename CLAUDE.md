@@ -105,6 +105,13 @@ cd frontend; npm run build
   antwortet mit den URLs, die er braucht) und lädt nur diese hoch (`/sync/datei`). Schreibende Sync-Endpunkte
   verlangen den Kopf `X-Studienhub-Schluessel`. Neue Datei-Revision in TUWEL = neue URL; bei geändertem Inhalt
   bleibt die alte Datei als „name (alt JJJJ-MM-TT).ext“ erhalten. Videos nur als Link (`Dokument.ist_link`).
+- LectureTube = TUWEL-Plugin `mod_opencast`: TUWEL holt die Episoden serverseitig von Opencast und rendert
+  sie in die Seite (Serie: `li.episode` bzw. Tabelle, Episode: `window.episode`). Kein LTI, kein direkter
+  Opencast-Zugriff, daher keine zusätzlichen Host-Berechtigungen. Jede Episode ist ein `Dokument` mit
+  `episode_id` (Schlüssel `opencast:<id>`), `aufnahme_am`, `dauer_sekunden`, `medien_url`; Episodenseiten
+  werden nur für neue Aufzeichnungen ohne Dauer geöffnet.
+- Eine in der LVA gespeicherte `tuwel_kurs_id` gilt nur bei passendem Semester; bei Zuordnungswechsel
+  ziehen die Unterlagen samt Dateien um (`setze_kurs_lva`).
 - Geheimnisse nur in `.env` (ignoriert); `.env.example` bleibt leer (Test + pre-commit-Hook prüfen das).
 - Neue Spalten in bestehenden Tabellen in `db.NACHTRAEGLICHE_SPALTEN` eintragen (einfache Migration).
 - Ein erneuter TISS-Import übernimmt nur Änderungen (Abgleich über die iCal-UID) und plant nur die

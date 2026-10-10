@@ -19,6 +19,7 @@ from ..tuwel_sync import (
     fehler_melden,
     inhalt_abgleichen,
     kurse_registrieren,
+    setze_kurs_lva,
     soll_synchronisiert_werden,
     status,
     sync_beenden,
@@ -57,11 +58,17 @@ class EintragIn(BaseModel):
     aktivitaet: str = ""
     dateiname: str = ""
     unterordner: str = ""
+    episode_id: str | None = Field(None, max_length=100)
+    datum_text: str = ""
+    dauer_text: str = ""
+    dauer_sekunden: int | None = Field(None, ge=0)
+    medien_url: str | None = None
 
 
 class InhaltIn(BaseModel):
     kurs_id: int
     eintraege: list[EintragIn]
+    nachtrag: bool = False  # Details neuer Aufzeichnungen im selben Lauf
 
 
 class EndeIn(BaseModel):
@@ -106,7 +113,7 @@ def sync_inhalt(daten: InhaltIn, session: Session = Depends(get_session)):
     kurs = session.get(TuwelKurs, daten.kurs_id)
     if kurs is None or not soll_synchronisiert_werden(kurs):
         raise HTTPException(409, "Kurs ist keiner LVA zugeordnet")
-    return inhalt_abgleichen(session, kurs, [Eintrag(**e.model_dump()) for e in daten.eintraege])
+    return inhalt_abgleichen(session, kurs, [Eintrag(**e.model_dump()) for e in daten.eintraege], daten.nachtrag)
 
 
 @router.post("/sync/datei", dependencies=[Depends(pruefe_schluessel)])
@@ -180,9 +187,9 @@ def kurs_zuordnen(kurs_id: int, daten: ZuordnungIn, session: Session = Depends(g
     else:
         if daten.lva_id is not None and session.get(Lva, daten.lva_id) is None:
             raise HTTPException(404, "LVA nicht gefunden")
-        kurs.zuordnung, kurs.lva_id = ZUORDNUNG_MANUELL, daten.lva_id
-        if daten.lva_id is not None:
-            session.get(Lva, daten.lva_id).tuwel_kurs_id = kurs.id
+        kurs.zuordnung = ZUORDNUNG_MANUELL
+        # Unterlagen ziehen bei einem Wechsel mit um
+        setze_kurs_lva(session, kurs, session.get(Lva, daten.lva_id) if daten.lva_id is not None else None)
     session.commit()
     session.refresh(kurs)
     return kurs_out(kurs)
@@ -190,7 +197,7 @@ def kurs_zuordnen(kurs_id: int, daten: ZuordnungIn, session: Session = Depends(g
 
 @router.get("/dokumente")
 def dokumente_auflisten(lva_id: int | None = None, session: Session = Depends(get_session)):
-    abfrage = select(Dokument).order_by(Dokument.lva_id, Dokument.abschnitt, Dokument.dateiname)
+    abfrage = select(Dokument).order_by(Dokument.lva_id, Dokument.abschnitt, Dokument.aufnahme_am, Dokument.dateiname)
     if lva_id is not None:
         abfrage = abfrage.where(Dokument.lva_id == lva_id)
     return [
@@ -199,6 +206,8 @@ def dokumente_auflisten(lva_id: int | None = None, session: Session = Depends(ge
             "dateiname": d.dateiname, "typ": d.typ, "ist_link": d.ist_link,
             "url": d.quelle_url if d.ist_link else None, "pfad": d.pfad, "groesse": d.groesse,
             "status": d.status, "erstellt_am": d.erstellt_am, "geaendert_am": d.geaendert_am,
+            "episode_id": d.episode_id, "aufnahme_am": d.aufnahme_am, "dauer_sekunden": d.dauer_sekunden,
+            "medien_url": d.medien_url,
         }
         for d in session.scalars(abfrage)
     ]

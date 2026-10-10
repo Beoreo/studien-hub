@@ -95,9 +95,13 @@ export function zustandLesen(zustand) {
   return { abschnitte, aktivitaeten }
 }
 
-/** Wie eine Aktivität behandelt wird: 'video', 'datei' (Ressource), 'seite' (Dateien auf der Seite), 'link' oder null. */
+/**
+ * Wie eine Aktivität behandelt wird: 'opencast' (LectureTube-Serie oder -Episode), 'video',
+ * 'datei' (Ressource), 'seite' (Dateien auf der Seite), 'link' oder null.
+ */
 export function klassifiziere(aktivitaet) {
   const modul = (aktivitaet.modul || '').toLowerCase()
+  if (modul === 'opencast') return 'opencast'
   if (VIDEO_MODUL.test(modul)) return 'video'
   if (modul === 'resource') return 'datei'
   if (modul === 'url') return 'link'
@@ -122,4 +126,138 @@ export function dateinameAusKopf(contentDisposition) {
   }
   const einfach = contentDisposition.match(/filename="?([^";]+)"?/i)
   return einfach ? einfach[1].trim() : null
+}
+
+// --- LectureTube (Moodle-Plugin mod_opencast) ----------------------------------------------
+// TUWEL holt die Episoden serverseitig von Opencast und rendert sie in die Seite:
+//   Serie:   <li class="episode" title="…"><a href="…view.php?id=…&e=<id>">… <span class="duration">1:23:45</span>
+//            <div class="title">…</div><span class="date">13.10.2026</span></a></li>
+//            oder (Listenansicht) eine Tabelle mit den Spalten Titel (Link), Dauer, Datum
+//   Episode: <script>window.episode = {"metadata":{"id","title","duration",…},"streams":[…]}</script>
+
+const DAUER = /^\d{1,3}:\d{2}(?::\d{2})?$/
+const DATUM = /\b\d{1,2}[./]\d{1,2}[./]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\.?\s+[A-Za-zÄÖÜäöüß]+\.?\s+\d{4}\b/
+
+function text(html) {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function absolut(url, basis) {
+  const sauber = url.replace(/&amp;/g, '&')
+  return sauber.startsWith('http') ? sauber : basis + (sauber.startsWith('/') ? '' : '/mod/opencast/') + sauber
+}
+
+/** Liest alle Episoden einer LectureTube-Serienseite (Kachel- und Listenansicht). */
+export function opencastSerie(html, basis = TUWEL) {
+  const bloecke = [
+    ...[...html.matchAll(/<li[^>]*class="[^"]*\bepisode\b[^"]*"[^>]*>([\s\S]*?)<\/li>/g)].map((m) => ({ form: 'kacheln', html: m[0] })),
+    ...[...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => ({ form: 'tabelle', html: m[0] })),
+  ]
+  const episoden = new Map()
+  for (const block of bloecke) {
+    const link = block.html.match(/href="([^"]*opencast\/view\.php\?[^"]*?\b(?:amp;)?e=([A-Za-z0-9_-]+)[^"]*)"/)
+    if (!link) continue
+    const id = link[2]
+    if (episoden.has(id)) continue
+    const titel =
+      block.html.match(/class="title"[^>]*>([\s\S]*?)<\/div>/)?.[1] ??
+      block.html.match(/<li[^>]*\btitle="([^"]*)"/)?.[1] ??
+      block.html.match(/<a[^>]*href="[^"]*e=[^"]*"[^>]*>([\s\S]*?)<\/a>/)?.[1] ??
+      ''
+    const zellen = [...block.html.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map((z) => text(z[1]))
+    const dauer = text(block.html.match(/class="duration"[^>]*>([\s\S]*?)<\//)?.[1] ?? '') || zellen.find((z) => DAUER.test(z)) || ''
+    const datum =
+      text(block.html.match(/class="date"[^>]*>([\s\S]*?)<\//)?.[1] ?? '') || zellen.find((z) => DATUM.test(z) && !DAUER.test(z)) || ''
+    episoden.set(id, {
+      episodeId: id,
+      url: absolut(link[1], basis),
+      titel: text(titel),
+      dauerText: DAUER.test(dauer) ? dauer : '',
+      datumText: datum,
+      form: block.form,
+    })
+  }
+  return [...episoden.values()]
+}
+
+/** Liest window.episode einer Episodenseite: Titel, Dauer in Sekunden und direkte Medien-URLs. */
+export function opencastEpisode(html) {
+  const start = html.indexOf('window.episode')
+  if (start < 0) return null
+  const json = jsonAb(html, html.indexOf('{', start))
+  if (!json) return null
+  let daten
+  try {
+    daten = JSON.parse(json)
+  } catch {
+    return null
+  }
+  const meta = daten.metadata || {}
+  const medien = []
+  for (const stream of daten.streams || []) {
+    for (const [art, quellen] of Object.entries(stream.sources || {})) {
+      for (const q of quellen || []) {
+        if (q?.src) medien.push({ src: q.src, art, inhalt: stream.content || '', breite: q.res?.w || 0, hoehe: q.res?.h || 0 })
+      }
+    }
+  }
+  // bevorzugt: MP4 der Präsentation bzw. des Vortragenden in höchster Auflösung, sonst HLS
+  medien.sort((a, b) => (a.art === 'mp4' ? 0 : 1) - (b.art === 'mp4' ? 0 : 1) || b.breite * b.hoehe - a.breite * a.hoehe)
+  const dauer = Number(meta.duration)
+  return {
+    episodeId: meta.id ? String(meta.id) : null,
+    titel: meta.title || '',
+    // Paella erwartet Sekunden; sehr große Werte sind Millisekunden aus Opencast
+    dauerSekunden: Number.isFinite(dauer) && dauer > 0 ? Math.round(dauer > 100000 ? dauer / 1000 : dauer) : null,
+    medienUrl: medien[0]?.src || null,
+    medienDomains: [...new Set(medien.map((m) => domain(m.src)).filter(Boolean))],
+  }
+}
+
+/** Schneidet ein JSON-Objekt ab Position `start` aus (Klammern zählen, Zeichenketten beachten). */
+function jsonAb(text, start) {
+  if (start < 0) return null
+  let tiefe = 0
+  let inString = false
+  for (let i = start; i < text.length; i++) {
+    const z = text[i]
+    if (inString) {
+      if (z === '\\') i++
+      else if (z === '"') inString = false
+    } else if (z === '"') inString = true
+    else if (z === '{') tiefe++
+    else if (z === '}' && --tiefe === 0) return text.slice(start, i + 1)
+  }
+  return null
+}
+
+export function domain(url) {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Kurzbeschreibung einer Videoseite, falls sie keine bekannte Struktur hat: eingebettete
+ * Frames, Formulare (LTI-Start) und externe Domains – damit sich neue Quellen nachrüsten lassen.
+ */
+export function seitenAnalyse(html, basis = TUWEL) {
+  const eigen = domain(basis)
+  const iframes = [...html.matchAll(/<iframe[^>]+src="([^"]+)"/g)].map((m) => domain(absolut(m[1], basis))).filter(Boolean)
+  const lti = /lti_message_type|launch_presentation|oauth_consumer_key|mod\/lti\//i.test(html)
+  const externe = [...html.matchAll(/(?:src|href|action)="(https?:\/\/[^"]+)"/g)]
+    .map((m) => domain(m[1]))
+    .filter((d) => d && d !== eigen)
+  return { iframes: [...new Set(iframes)], lti, domains: [...new Set(externe)].slice(0, 10) }
 }

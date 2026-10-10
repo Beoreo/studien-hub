@@ -44,8 +44,8 @@ export class Hub {
     return this.json('/sync/kurse', { kurse })
   }
 
-  inhalt(kursId, eintraege) {
-    return this.json('/sync/inhalt', { kurs_id: kursId, eintraege })
+  inhalt(kursId, eintraege, { nachtrag = false } = {}) {
+    return this.json('/sync/inhalt', { kurs_id: kursId, eintraege, nachtrag })
   }
 
   datei(kursId, eintrag, blob) {

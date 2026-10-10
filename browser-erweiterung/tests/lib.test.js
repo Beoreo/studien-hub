@@ -91,7 +91,7 @@ test('Kurszustand lesen und Aktivitäten einordnen', () => {
       [100, 'Allgemeines', 'datei'],
       [101, 'Woche 1', 'seite'],
       [102, 'Allgemeines', null],
-      [104, 'Woche 1', 'video'],
+      [104, 'Woche 1', 'opencast'],
     ],
   )
   assert.equal(klassifiziere({ modul: 'url' }), 'link')

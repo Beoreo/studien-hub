@@ -56,6 +56,10 @@ NACHTRAEGLICHE_SPALTEN = [
     ("arbeitsregel", "voller_unitag_stunden", "FLOAT DEFAULT 6"),
     ("arbeitsregel", "min_freie_tage", "INTEGER DEFAULT 1"),
     ("arbeitsregel", "gewichte", "JSON"),
+    ("dokument", "episode_id", "VARCHAR(100)"),
+    ("dokument", "aufnahme_am", "DATE"),
+    ("dokument", "dauer_sekunden", "INTEGER"),
+    ("dokument", "medien_url", "TEXT"),
 ]
 
 

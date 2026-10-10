@@ -3,9 +3,9 @@
 Alles hängt an der LVA; Arbeitsblöcke und Arbeitsregel sind davon unabhängig.
 """
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, Time, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -209,6 +209,11 @@ class Dokument(Base):
     pruefsumme: Mapped[str | None] = mapped_column(String(64))  # SHA-256
     groesse: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(12), default=DOK_NEU)  # Ergebnis des letzten Laufs
+    # Nur Aufzeichnungen (LectureTube/Opencast): einzelne Episode einer Serie
+    episode_id: Mapped[str | None] = mapped_column(String(100))
+    aufnahme_am: Mapped[date | None] = mapped_column(Date)
+    dauer_sekunden: Mapped[int | None] = mapped_column(Integer)
+    medien_url: Mapped[str | None] = mapped_column(Text)  # direkte Videodatei, kann ablaufen
     erstellt_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     geaendert_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     zuletzt_gesehen: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

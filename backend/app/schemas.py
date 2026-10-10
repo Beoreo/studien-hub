@@ -21,6 +21,9 @@ class LvaOut(BaseModel):
     aufzeichnung: bool
     tuwel_kurs_id: int | None
     anzahl_termine: int = 0
+    anzahl_videos: int = 0
+    video_dauer_sekunden: int = 0  # Summe der bekannten Dauern
+    videos_ohne_dauer: int = 0
 
 
 class LvaUpdate(BaseModel):

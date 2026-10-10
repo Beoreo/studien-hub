@@ -146,9 +146,10 @@ def test_ordnerdateien_und_namensgleichheit(session, lvas, unterlagen):
 
 def test_videos_nur_als_link(session, lvas, unterlagen):
     k = kurs(session, 1, "185.A91-2026W")
-    video = eintrag(cm_id=400, art="video", url="https://lecturetube.tuwien.ac.at/v/123", aktivitaet="VO 1 Aufzeichnung")
+    video = eintrag(cm_id=400, art="video", url="https://lecturetube.tuwien.ac.at/v/123", aktivitaet="VO 1 Aufzeichnung",
+                    dateiname="")
     ergebnis = inhalt_abgleichen(session, k, [video])
-    assert ergebnis == {"herunterladen": [], "unveraendert": 0, "videos_neu": 1}
+    assert ergebnis == {"herunterladen": [], "unveraendert": 0, "videos_neu": 1, "details": []}
     doc = session.query(Dokument).one()
     assert doc.ist_link and doc.typ == "video" and doc.pfad is None and doc.dateiname == "VO 1 Aufzeichnung"
     assert inhalt_abgleichen(session, k, [video])["videos_neu"] == 0
@@ -235,3 +236,104 @@ def test_api_fehler_und_manuelle_zuordnung(client, session, lvas):
     neu = client.post("/api/tuwel/einrichtung/neuer-schluessel").json()["schluessel"]
     assert neu != alt
     assert client.get("/api/tuwel/sync/pruefen", headers={"X-Studienhub-Schluessel": alt}).status_code == 401
+
+
+# --- LectureTube-Aufzeichnungen ----------------------------------------------------------
+
+from datetime import date  # noqa: E402
+
+from app.tuwel_sync import datum_aus_text, dauer_aus_text, setze_kurs_lva  # noqa: E402
+
+
+def test_dauer_und_datum_aus_text():
+    assert dauer_aus_text("1:23:45") == 5025
+    assert dauer_aus_text("45:07") == 2707
+    assert dauer_aus_text("") is None and dauer_aus_text("abc") is None
+    assert datum_aus_text("13.10.2026") == date(2026, 10, 13)
+    assert datum_aus_text("6.10.26") == date(2026, 10, 6)
+    assert datum_aus_text("13/10/2026") == date(2026, 10, 13)
+    assert datum_aus_text("2026-10-13") == date(2026, 10, 13)
+    assert datum_aus_text("13. Oktober 2026") == date(2026, 10, 13)
+    assert datum_aus_text("31.02.2026") is None and datum_aus_text("") is None
+
+
+def episode(n, **kw):
+    basis = dict(cm_id=3053605, art="video", url=f"https://tuwel/mod/opencast/view.php?id=3053605&e=ep{n}",
+                 abschnitt="Vorlesungsaufzeichnungen", aktivitaet="LectureTube Videos", dateiname=f"VO {n}",
+                 episode_id=f"ep{n}", datum_text=f"{n + 5}.10.2026", dauer_text="1:30:00")
+    basis.update(kw)
+    return Eintrag(**basis)
+
+
+def test_serie_ersetzt_alten_sammel_link_und_speichert_einzelne_aufzeichnungen(session, lvas, unterlagen):
+    k = kurs(session, 1, "185.A91-2026W")
+    # Stand vor dieser Version: die Serienseite als ein einziges „Video“
+    inhalt_abgleichen(session, k, [Eintrag(cm_id=3053605, art="video", url="https://tuwel/mod/opencast/view.php?id=3053605",
+                                           aktivitaet="LectureTube Videos")])
+    assert session.query(Dokument).count() == 1
+
+    ergebnis = inhalt_abgleichen(session, k, [episode(n) for n in range(1, 5)])
+    assert ergebnis["videos_neu"] == 4 and ergebnis["details"] == []
+    videos = session.query(Dokument).order_by(Dokument.aufnahme_am).all()
+    assert [(v.dateiname, v.aufnahme_am, v.dauer_sekunden) for v in videos] == [
+        (f"VO {n}", date(2026, 10, n + 5), 5400) for n in range(1, 5)
+    ]
+    assert all(v.ist_link and v.pfad is None and v.schluessel.startswith("opencast:") for v in videos)
+
+
+def test_erneuter_sync_fuegt_nur_neue_aufzeichnungen_hinzu(session, lvas, unterlagen):
+    k = kurs(session, 1, "185.A91-2026W")
+    inhalt_abgleichen(session, k, [episode(1), episode(2)])
+    k = kurs(session, 1, "185.A91-2026W")  # nächster Lauf
+    ergebnis = inhalt_abgleichen(session, k, [episode(1), episode(2), episode(3)])
+    assert ergebnis["videos_neu"] == 1
+    assert session.query(Dokument).count() == 3
+    status = {d.episode_id: d.status for d in session.query(Dokument)}
+    assert status == {"ep1": "unveraendert", "ep2": "unveraendert", "ep3": "neu"}
+
+
+def test_details_nur_fuer_aufzeichnungen_ohne_dauer(session, lvas, unterlagen):
+    k = kurs(session, 1, "185.A91-2026W")
+    ergebnis = inhalt_abgleichen(session, k, [episode(1), episode(2, dauer_text="")])
+    assert ergebnis["details"] == [episode(2).url]
+    # Erweiterung liefert die Details nach (gleicher Lauf): Dauer und Medien-URL ergänzt, bleibt „neu“
+    nachgeliefert = episode(2, dauer_text="", dauer_sekunden=3725, medien_url="https://oc.example/2/high.mp4")
+    zweiter = inhalt_abgleichen(session, k, [nachgeliefert], nachtrag=True)
+    assert zweiter["videos_neu"] == 0 and zweiter["details"] == []
+    doc = session.query(Dokument).filter_by(episode_id="ep2").one()
+    assert (doc.dauer_sekunden, doc.medien_url, doc.status) == (3725, "https://oc.example/2/high.mp4", "neu")
+
+
+def test_lva_liste_zeigt_anzahl_videos_und_gesamtdauer(client, session, lvas):
+    k = kurs(session, 1, "185.A91-2026W")
+    inhalt_abgleichen(session, k, [episode(1), episode(2, dauer_text="45:00"), episode(3, dauer_text="")])
+    ep1 = next(l for l in client.get("/api/lvas").json() if l["id"] == lvas["ep1"].id)
+    assert (ep1["anzahl_videos"], ep1["video_dauer_sekunden"], ep1["videos_ohne_dauer"]) == (3, 5400 + 2700, 1)
+    andere = next(l for l in client.get("/api/lvas").json() if l["id"] == lvas["algebra"].id)
+    assert (andere["anzahl_videos"], andere["video_dauer_sekunden"]) == (0, 0)
+
+    doks = client.get("/api/tuwel/dokumente", params={"lva_id": lvas["ep1"].id}).json()
+    assert [(d["dateiname"], d["aufnahme_am"], d["dauer_sekunden"]) for d in doks][0] == ("VO 1", "2026-10-06", 5400)
+
+
+def test_falsch_gespeicherte_kurs_id_aus_anderem_semester_wird_korrigiert(session, lvas, unterlagen):
+    """Fall Mathematik: Kurs aus 2026W hing an der LVA aus 2027S, weil dort die Kurs-ID stand."""
+    lvas["ep1_alt"].tuwel_kurs_id = 1  # falscher, früher gespeicherter Verweis (2025W)
+    session.commit()
+    k = kurse_registrieren(session, [{"id": 1, "kurzname": "185.A91-2026W"}])[0]
+    assert k.lva_id == lvas["ep1"].id
+    assert lvas["ep1_alt"].tuwel_kurs_id is None and lvas["ep1"].tuwel_kurs_id == 1
+
+
+def test_unterlagen_ziehen_bei_neuer_zuordnung_mit_um(session, lvas, unterlagen):
+    k = kurs(session, 1, "185.A91-2026W")
+    datei = datei_speichern(session, k, eintrag(), io.BytesIO(b"x"))
+    inhalt_abgleichen(session, k, [episode(1)])
+    setze_kurs_lva(session, k, lvas["algebra"])
+    session.commit()
+    doc = session.get(Dokument, datei["id"])
+    assert doc.lva_id == lvas["algebra"].id
+    assert doc.pfad == "2026W/Algebra und Diskrete Mathematik/Woche 1/folien.pdf"
+    assert (unterlagen / doc.pfad).read_bytes() == b"x"
+    assert not (unterlagen / datei["pfad"]).exists()
+    assert session.query(Dokument).filter_by(episode_id="ep1").one().lva_id == lvas["algebra"].id

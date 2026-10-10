@@ -101,3 +101,26 @@ export const MARKIERUNGEN = [
   { wert: 'anwesenheit', name: 'Anwesenheitspflicht', symbol: '✋' },
   { wert: 'aufzeichnung', name: 'Aufzeichnung', symbol: '🎥' },
 ]
+
+// Gesamtdauer in Sekunden als „5:42 h“ bzw. „45 min“
+export function dauerText(sekunden) {
+  if (!sekunden) return ''
+  const minuten = Math.round(sekunden / 60)
+  if (minuten < 60) return `${minuten} min`
+  return `${Math.floor(minuten / 60)}:${String(minuten % 60).padStart(2, '0')} h`
+}
+
+// Einzelne Aufzeichnung als „1:23:45“
+export function laufzeit(sekunden) {
+  if (!sekunden) return ''
+  const h = Math.floor(sekunden / 3600)
+  const m = Math.floor((sekunden % 3600) / 60)
+  const s = sekunden % 60
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`
+}
+
+export function videoZusammenfassung(anzahl, sekunden, ohneDauer = 0) {
+  if (!anzahl) return '–'
+  const dauer = dauerText(sekunden)
+  return `${anzahl} ${anzahl === 1 ? 'Video' : 'Videos'}${dauer ? ` · ${ohneDauer ? 'mind. ' : ''}${dauer}` : ''}`
+}

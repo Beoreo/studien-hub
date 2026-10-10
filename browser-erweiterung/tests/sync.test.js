@@ -135,7 +135,7 @@ test('kompletter Lauf: nur zugeordnete Kurse, nur angeforderte Dateien', async (
   assert.deepEqual(hub.protokoll.inhalte.map((i) => i.kursId), [1]) // Fremdkurs übersprungen
   assert.deepEqual(hub.protokoll.dateien.map((d) => d.eintrag.dateiname), ['blatt1.pdf']) // Skript bekannt
   assert.match(hub.protokoll.dateien[0].inhalt, /^INHALT:/)
-  assert.deepEqual(ergebnis.statistik, { kurse: 1, neu: 1, geaendert: 0, unveraendert: 1, videos: 2, fehler: [] })
+  assert.deepEqual(ergebnis.statistik, { kurse: 1, neu: 1, geaendert: 0, unveraendert: 1, videos: 2, fehler: [], hinweise: [] })
   assert.deepEqual(hub.protokoll.ende, ergebnis.statistik)
   assert.ok(meldungen.length > 3)
 })
