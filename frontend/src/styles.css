@@ -432,3 +432,46 @@ label.block {
   align-items: center;
   margin: 0;
 }
+
+button.zweitrangig {
+  background: var(--flaeche);
+  color: var(--akzent);
+}
+
+.begruendung {
+  margin-top: 0.4rem;
+  color: var(--text);
+}
+
+.begruendung ul {
+  margin: 0.2rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.kriterien {
+  border: 1px solid var(--rand);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.kriterien legend {
+  font-weight: 600;
+  padding: 0 0.3rem;
+}
+
+.kriterien .regler input[type='range'] {
+  flex: 1;
+  max-width: 16rem;
+}
+
+.kriterien .regler output {
+  min-width: 1.5rem;
+  text-align: right;
+}
+
+.fc .abgabe {
+  border-style: dotted !important;
+  border-width: 2px !important;
+  border-color: #000 !important;
+}

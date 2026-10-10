@@ -58,7 +58,7 @@ def eintrag_aus_termin(t: Termin) -> ExportEintrag:
         ende=t.ende,
         lva_nummer=t.lva.nummer or "",
         lva_titel=t.lva.titel,
-        typ="Prüfung" if t.ist_pruefung else t.typ,
+        typ="Prüfung" if t.ist_pruefung else "Abgabe" if t.ist_abgabe else t.typ,
         ort=t.ort or "",
         steop=t.ist_steop,
         anwesenheitspflicht=t.hat_anwesenheitspflicht,

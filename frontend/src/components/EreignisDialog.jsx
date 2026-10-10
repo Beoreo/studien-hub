@@ -106,7 +106,7 @@ function ArbeitInhalt({ event, onGeaendert, setFehler }) {
         )}
         <button onClick={() => ausfuehren(api.blockAendern(props.blockId, { notiz }))}>Notiz speichern</button>
         <button className="gefahr" onClick={() => ausfuehren(api.blockLoeschen(props.blockId))}>
-          Löschen
+          {vorschlag ? 'Vorschlag verwerfen' : 'Löschen'}
         </button>
       </div>
     </>

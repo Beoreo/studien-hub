@@ -85,6 +85,13 @@ cd frontend; npm run build
 - An gesetzlichen Feiertagen (holidays, Land AT) und an den `freie_tage` der Arbeitsregel
   (einzelne Tage, Zeiträume, optional jährlich) wird keine Arbeitszeit vorgeschlagen. Beides
   erscheint im Kalender als ganztägiger grauer Eintrag.
+- Die Verteilung (`planung.py`) sucht die beste Woche nach Punktzahl, nicht die früheste: Tagespläne
+  je Tag, dynamische Programmierung über die Woche. Harte Regeln: Tagesgrenze Uni+Arbeit
+  (`max_tag_stunden`), Lernfenster nach Vorlesungen sowie vor und am Vortag von Prüfungen/Abgaben,
+  kein Block am Abend nach vollem Unitag. Gewichtet (0–10): gleichmaessig, buendeln, lernzeit,
+  erholung, zerstueckelung. Der Vorschlag liefert `begruendungen`; offene Vorschläge lassen sich
+  verwerfen (`POST /api/arbeit/verwerfen`).
+- Termine mit „Abgabe/Deadline“ im Titel bekommen den Typ `ABGABE` (Frist, kein Anwesenheitstermin).
 - Neue Spalten in bestehenden Tabellen in `db.NACHTRAEGLICHE_SPALTEN` eintragen (einfache Migration).
 - Ein erneuter TISS-Import übernimmt nur Änderungen (Abgleich über die iCal-UID) und plant nur die
   betroffenen Wochen neu.

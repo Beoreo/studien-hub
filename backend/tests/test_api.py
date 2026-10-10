@@ -151,3 +151,31 @@ def test_export_endpunkte(client, tiss_ics):
     pdf = client.get("/api/export/pdf", params=params)
     assert pdf.content.startswith(b"%PDF")
     assert client.get("/api/export/docx").status_code == 404
+
+
+def test_vorschlag_verwerfen_vor_bestaetigung(client):
+    client.put("/api/arbeit/regel", json=REGEL)
+    fix = client.post("/api/arbeit/bloecke", json={"start": "2026-10-05T08:00:00", "ende": "2026-10-05T10:00:00"}).json()
+    vorschlag = client.post("/api/arbeit/vorschlag", params={"woche": "2026-10-05"}).json()
+    assert vorschlag["bloecke"] and vorschlag["begruendungen"]
+    assert isinstance(vorschlag["punktzahl"], float)
+
+    verworfen = client.post("/api/arbeit/verwerfen", params={"woche": "2026-10-07"}).json()["verworfen"]
+    assert verworfen == len(vorschlag["bloecke"])
+    uebrig = client.get("/api/arbeit/bloecke").json()
+    assert [b["id"] for b in uebrig] == [fix["id"]]  # bestätigter Block bleibt
+    assert client.post("/api/arbeit/verwerfen", params={"woche": "2026-10-05"}).json()["verworfen"] == 0
+
+
+def test_regel_mit_kriterien_speichern(client):
+    regel = dict(REGEL, max_tag_stunden=8, lernfenster_minuten=90, voller_unitag_stunden=5, min_freie_tage=2,
+                 gewichte={"gleichmaessig": 3, "buendeln": 10, "lernzeit": 7, "erholung": 0, "zerstueckelung": 1})
+    gespeichert = client.put("/api/arbeit/regel", json=regel).json()
+    assert gespeichert["max_tag_stunden"] == 8 and gespeichert["min_freie_tage"] == 2
+    assert gespeichert["gewichte"]["buendeln"] == 10
+    assert client.get("/api/arbeit/regel").json()["lernfenster_minuten"] == 90
+    # Standardwerte, wenn nichts angegeben ist
+    standard = client.put("/api/arbeit/regel", json=REGEL).json()
+    assert standard["max_tag_stunden"] == 9 and standard["lernfenster_minuten"] == 120
+    assert standard["gewichte"] == {"gleichmaessig": 5, "buendeln": 5, "lernzeit": 5, "erholung": 5, "zerstueckelung": 5}
+    assert client.put("/api/arbeit/regel", json=dict(REGEL, gewichte={"lernzeit": 11})).status_code == 422

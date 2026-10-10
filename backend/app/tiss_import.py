@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from .config import ZEITZONE
 from .models import (
     STANDARD_FARBEN,
+    TYP_ABGABE,
     TYP_PRUEFUNG,
     TYP_SONSTIGE,
     TYP_UE,
@@ -33,6 +34,7 @@ from .planung import wochenbeginn
 LVA_NUMMER = re.compile(r"\b(\d{3}\.[0-9A-Z]{3})\b")
 LVA_TYP = re.compile(r"\b(VO|UE|VU|SE|PR|LU|PS|EX|KO|AG|PV|SV|UV|VL)\b")
 PRUEFUNG = re.compile(r"prüfung|pruefung|\bexam|klausur|\btest\b|\btermin zur leistungsfeststellung", re.IGNORECASE)
+ABGABE = re.compile(r"abgabe|deadline|einreichung|submission", re.IGNORECASE)
 TYP_ABBILDUNG = {"VO": TYP_VO, "UE": TYP_UE, "VU": TYP_VU, "VL": TYP_VO}
 
 
@@ -128,7 +130,9 @@ def parse_ical(daten: bytes | str) -> list[TissTermin]:
 
         nummer, titel, typ_kuerzel = zerlege_zusammenfassung(zusammenfassung, beschreibung)
         kategorien = " ".join(_kategorien(komponente)).upper()
-        if "EXAM" in kategorien or PRUEFUNG.search(zusammenfassung):
+        if ABGABE.search(zusammenfassung):
+            typ = TYP_ABGABE
+        elif "EXAM" in kategorien or PRUEFUNG.search(zusammenfassung):
             typ = TYP_PRUEFUNG
             titel = PRUEFUNG.sub("", titel).strip(" -–:,") or titel
         else:

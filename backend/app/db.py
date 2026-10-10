@@ -51,6 +51,11 @@ def init_db(url: str = DATENBANK_URL) -> Engine:
 # Spalten, die nach der ersten Version dazugekommen sind: (Tabelle, Spalte, SQL-Definition)
 NACHTRAEGLICHE_SPALTEN = [
     ("arbeitsregel", "freie_tage", "JSON DEFAULT '[]'"),
+    ("arbeitsregel", "max_tag_stunden", "FLOAT DEFAULT 9"),
+    ("arbeitsregel", "lernfenster_minuten", "INTEGER DEFAULT 120"),
+    ("arbeitsregel", "voller_unitag_stunden", "FLOAT DEFAULT 6"),
+    ("arbeitsregel", "min_freie_tage", "INTEGER DEFAULT 1"),
+    ("arbeitsregel", "gewichte", "JSON"),
 ]
 
 

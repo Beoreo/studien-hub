@@ -12,6 +12,61 @@ const STANDARD_REGEL = {
   puffer_minuten: 30,
   arbeitgeber: '',
   freie_tage: [],
+  max_tag_stunden: 9,
+  lernfenster_minuten: 120,
+  voller_unitag_stunden: 6,
+  min_freie_tage: 1,
+  gewichte: { gleichmaessig: 5, buendeln: 5, lernzeit: 5, erholung: 5, zerstueckelung: 5 },
+}
+
+// Kriterien der entspannten Woche, je 0 (egal) bis 10 (sehr wichtig)
+const KRITERIEN = [
+  { feld: 'gleichmaessig', name: 'Gleichmäßige Last', hilfe: 'Uni plus Arbeit pro Tag möglichst ähnlich' },
+  { feld: 'buendeln', name: 'Ganze Tage bündeln', hilfe: 'Arbeit an Tagen ohne Uni, wenige Wechsel' },
+  { feld: 'lernzeit', name: 'Lernzeit schützen', hilfe: 'Tag vor Prüfung oder Abgabe arbeitsfrei halten' },
+  { feld: 'erholung', name: 'Erholung', hilfe: 'komplett freie Tage pro Woche' },
+  { feld: 'zerstueckelung', name: 'Keine Zerstückelung', hilfe: 'lieber wenige lange Blöcke' },
+]
+
+function EntspannteWoche({ regel, setRegel }) {
+  const zahl = (feld) => (e) => setRegel({ ...regel, [feld]: Number(e.target.value) })
+  const gewicht = (feld) => (e) => setRegel({ ...regel, gewichte: { ...regel.gewichte, [feld]: Number(e.target.value) } })
+  return (
+    <fieldset className="kriterien">
+      <legend>Entspannte Woche</legend>
+      <p className="hinweis">
+        Der Vorschlag bewertet jede mögliche Verteilung und wählt die beste. Diese Grenzen gelten immer:
+      </p>
+      <label>
+        Höchstens Uni + Arbeit pro Tag (Stunden)
+        <input type="number" min="1" max="24" step="0.5" value={regel.max_tag_stunden} onChange={zahl('max_tag_stunden')} />
+      </label>
+      <label>
+        Lernfenster nach Vorlesungen und vor Prüfungen/Abgaben (Minuten)
+        <input type="number" min="0" step="15" value={regel.lernfenster_minuten} onChange={zahl('lernfenster_minuten')} />
+      </label>
+      <label>
+        Voller Unitag ab (Stunden) – danach kein Arbeitsblock am Abend
+        <input type="number" min="0" max="24" step="0.5" value={regel.voller_unitag_stunden} onChange={zahl('voller_unitag_stunden')} />
+      </label>
+      <label>
+        Komplett freie Tage pro Woche (mindestens)
+        <input type="number" min="0" max="7" step="1" value={regel.min_freie_tage} onChange={zahl('min_freie_tage')} />
+      </label>
+      <p className="hinweis">Gewichtung – wie wichtig ist dir …</p>
+      {KRITERIEN.map((k) => (
+        <label key={k.feld} className="regler" title={k.hilfe}>
+          <span>
+            {k.name} <span className="hinweis">({k.hilfe})</span>
+          </span>
+          <span className="zeile">
+            <input type="range" min="0" max="10" step="1" value={regel.gewichte[k.feld]} onChange={gewicht(k.feld)} />
+            <output>{regel.gewichte[k.feld]}</output>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  )
 }
 
 const formatiere = (iso) => new Date(iso).toLocaleDateString('de-AT')
@@ -98,7 +153,9 @@ function RegelFormular({ setMeldung }) {
         setRegel(
           r
             ? {
+                ...STANDARD_REGEL,
                 ...r,
+                gewichte: { ...STANDARD_REGEL.gewichte, ...(r.gewichte || {}) },
                 fruehester_beginn: kurzeZeit(r.fruehester_beginn),
                 spaetestes_ende: kurzeZeit(r.spaetestes_ende),
                 arbeitgeber: r.arbeitgeber || '',
@@ -164,6 +221,7 @@ function RegelFormular({ setMeldung }) {
         Arbeitgeber
         <input value={regel.arbeitgeber} onChange={setze('arbeitgeber')} />
       </label>
+      <EntspannteWoche regel={regel} setRegel={setRegel} />
       <div className="feld">
         <span>Zusätzliche freie Tage</span>
         <p className="hinweis">

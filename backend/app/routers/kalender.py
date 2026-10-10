@@ -29,7 +29,7 @@ def termin_event(t: Termin) -> dict:
         "backgroundColor": t.lva.farbe,
         "borderColor": PRUEFUNG_FARBE_RAND if t.ist_pruefung else t.lva.farbe,
         "editable": False,
-        "classNames": ["termin"] + (["pruefung"] if t.ist_pruefung else []),
+        "classNames": ["termin"] + (["pruefung"] if t.ist_pruefung else []) + (["abgabe"] if t.ist_abgabe else []),
         "extendedProps": {
             "art": "termin",
             "terminId": t.id,
@@ -40,6 +40,7 @@ def termin_event(t: Termin) -> dict:
             "anwesenheitspflicht": t.hat_anwesenheitspflicht,
             "aufzeichnung": t.wird_aufgezeichnet,
             "pruefung": t.ist_pruefung,
+            "abgabe": t.ist_abgabe,
         },
     }
 

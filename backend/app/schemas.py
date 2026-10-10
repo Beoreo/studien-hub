@@ -80,6 +80,16 @@ class FreierTag(BaseModel):
         return self
 
 
+class GewichteSchema(BaseModel):
+    """Wie stark die Kriterien einer entspannten Woche zählen (0 = egal, 10 = sehr wichtig)."""
+
+    gleichmaessig: float = Field(5, ge=0, le=10)
+    buendeln: float = Field(5, ge=0, le=10)
+    lernzeit: float = Field(5, ge=0, le=10)
+    erholung: float = Field(5, ge=0, le=10)
+    zerstueckelung: float = Field(5, ge=0, le=10)
+
+
 class ArbeitsregelSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -93,6 +103,22 @@ class ArbeitsregelSchema(BaseModel):
     puffer_minuten: int = Field(30, ge=0, le=240)
     arbeitgeber: str | None = None
     freie_tage: list[FreierTag] = Field(default_factory=list)
+    max_tag_stunden: float = Field(9, gt=0, le=24)
+    lernfenster_minuten: int = Field(120, ge=0, le=12 * 60)
+    voller_unitag_stunden: float = Field(6, ge=0, le=24)
+    min_freie_tage: int = Field(1, ge=0, le=7)
+    gewichte: GewichteSchema = Field(default_factory=GewichteSchema)
+
+    @field_validator("max_tag_stunden", "lernfenster_minuten", "voller_unitag_stunden", "min_freie_tage", mode="before")
+    @classmethod
+    def _null_als_standard(cls, wert, info):
+        # Regeln aus der Zeit vor diesen Spalten können NULL enthalten
+        return cls.model_fields[info.field_name].default if wert is None else wert
+
+    @field_validator("gewichte", mode="before")
+    @classmethod
+    def _gewichte_standard(cls, wert):
+        return wert or {}
 
     @field_validator("freie_tage", mode="before")
     @classmethod
@@ -190,6 +216,8 @@ class GeopferterTermin(BaseModel):
 
 class VorschlagOut(BaseModel):
     woche: date
+    punktzahl: float
+    begruendungen: list[str]
     soll_stunden: float
     verplant_stunden: float
     fehlende_stunden: float

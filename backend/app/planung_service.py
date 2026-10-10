@@ -9,8 +9,18 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
 from .feiertage import gesperrte_tage
-from .models import ART_FLEXIBEL, STATUS_BESTAETIGT, STATUS_VORSCHLAG, Arbeitsblock, Arbeitsregel, Termin
-from .planung import Arbeitsregeln, Intervall, PlanTermin, verteile_arbeitszeit, wochenbeginn
+from .models import (
+    ART_FLEXIBEL,
+    STANDARD_GEWICHTE,
+    STATUS_BESTAETIGT,
+    STATUS_VORSCHLAG,
+    TYP_VO,
+    TYP_VU,
+    Arbeitsblock,
+    Arbeitsregel,
+    Termin,
+)
+from .planung import Arbeitsregeln, Gewichte, Intervall, PlanTermin, verteile_arbeitszeit, wochenbeginn
 
 REGEL_ID = 1
 
@@ -37,7 +47,17 @@ def regeln_aus_db(regel: Arbeitsregel, woche: date) -> Arbeitsregeln:
         max_block=timedelta(minutes=regel.max_block_minuten),
         puffer=timedelta(minutes=regel.puffer_minuten),
         freie_tage=frozenset(freie),
+        max_tag=timedelta(hours=_oder(regel.max_tag_stunden, 9)),
+        lernfenster=timedelta(minutes=_oder(regel.lernfenster_minuten, 120)),
+        voller_unitag=timedelta(hours=_oder(regel.voller_unitag_stunden, 6)),
+        min_freie_tage=_oder(regel.min_freie_tage, 1),
+        gewichte=Gewichte(**{**STANDARD_GEWICHTE, **(regel.gewichte or {})}),
     )
+
+
+def _oder(wert, standard):
+    """Standardwert für Spalten, die in alten Datenbanken NULL sein können."""
+    return standard if wert is None else wert
 
 
 def plan_termin(termin: Termin) -> PlanTermin:
@@ -48,6 +68,8 @@ def plan_termin(termin: Termin) -> PlanTermin:
         anwesenheitspflicht=termin.hat_anwesenheitspflicht,
         aufzeichnung=termin.wird_aufgezeichnet,
         pruefung=termin.ist_pruefung,
+        abgabe=termin.ist_abgabe,
+        vorlesung=termin.typ in (TYP_VO, TYP_VU),
         termin_id=termin.id,
     )
 
@@ -72,8 +94,9 @@ def schlage_woche_vor(session: Session, woche: date) -> dict:
             Arbeitsblock.status == STATUS_VORSCHLAG, Arbeitsblock.start >= von, Arbeitsblock.start < bis
         )
     )
+    # bis Montag danach laden: eine Prüfung am Montag schützt die Lernzeit am Sonntag
     termine = session.scalars(
-        select(Termin).options(joinedload(Termin.lva)).where(Termin.start < bis, Termin.ende > von)
+        select(Termin).options(joinedload(Termin.lva)).where(Termin.start < bis + timedelta(days=1), Termin.ende > von)
     ).all()
     bestaetigt = session.scalars(
         select(Arbeitsblock).where(
@@ -108,6 +131,8 @@ def schlage_woche_vor(session: Session, woche: date) -> dict:
     stunden = lambda d: round(d.total_seconds() / 3600, 2)  # noqa: E731
     return {
         "woche": von.date(),
+        "punktzahl": verteilung.punktzahl,
+        "begruendungen": verteilung.begruendungen,
         "soll_stunden": stunden(verteilung.soll),
         "verplant_stunden": stunden(verteilung.verplant),
         "fehlende_stunden": stunden(verteilung.fehlend),
@@ -131,6 +156,18 @@ def bestaetige_woche(session: Session, woche: date) -> int:
         block.status = STATUS_BESTAETIGT
     session.commit()
     return len(bloecke)
+
+
+def verwerfe_woche(session: Session, woche: date) -> int:
+    """Löscht die noch nicht bestätigten Vorschläge der Woche (Abbrechen vor der Bestätigung)."""
+    von, bis = _wochen_grenzen(woche)
+    ergebnis = session.execute(
+        delete(Arbeitsblock).where(
+            Arbeitsblock.status == STATUS_VORSCHLAG, Arbeitsblock.start >= von, Arbeitsblock.start < bis
+        )
+    )
+    session.commit()
+    return ergebnis.rowcount
 
 
 def plane_wochen_neu(session: Session, wochen: Iterable[date], heute: date | None = None) -> list[date]:

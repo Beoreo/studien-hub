@@ -15,8 +15,12 @@ TYP_VO = "VO"
 TYP_UE = "UE"
 TYP_VU = "VU"
 TYP_PRUEFUNG = "PRUEFUNG"
+TYP_ABGABE = "ABGABE"
 TYP_SONSTIGE = "SONSTIGE"
-TERMIN_TYPEN = [TYP_VO, TYP_UE, TYP_VU, TYP_PRUEFUNG, TYP_SONSTIGE]
+TERMIN_TYPEN = [TYP_VO, TYP_UE, TYP_VU, TYP_PRUEFUNG, TYP_ABGABE, TYP_SONSTIGE]
+
+# Standardgewichte der Verteilung (je 0–10), siehe planung.Gewichte
+STANDARD_GEWICHTE = {"gleichmaessig": 5, "buendeln": 5, "lernzeit": 5, "erholung": 5, "zerstueckelung": 5}
 
 # Arbeitsblöcke
 ART_FIX = "fix"
@@ -93,8 +97,12 @@ class Termin(Base):
         return self.typ == TYP_PRUEFUNG
 
     @property
+    def ist_abgabe(self) -> bool:
+        return self.typ == TYP_ABGABE
+
+    @property
     def anzeigename(self) -> str:
-        typ = "Prüfung" if self.ist_pruefung else self.typ
+        typ = "Prüfung" if self.ist_pruefung else "Abgabe" if self.ist_abgabe else self.typ
         return f"{self.lva.anzeigename} {typ}".strip()
 
 
@@ -135,6 +143,12 @@ class Arbeitsregel(Base):
     # Zusätzliche freie Tage neben den gesetzlichen Feiertagen, z. B. 24.12. oder Urlaub.
     # Einträge: {"von": "JJJJ-MM-TT", "bis": "JJJJ-MM-TT" | None, "bezeichnung": str, "jaehrlich": bool}
     freie_tage: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    # Kriterien für eine entspannte Woche (siehe planung.py)
+    max_tag_stunden: Mapped[float] = mapped_column(Float, default=9)  # Uni plus Arbeit pro Tag
+    lernfenster_minuten: Mapped[int] = mapped_column(Integer, default=120)
+    voller_unitag_stunden: Mapped[float] = mapped_column(Float, default=6)
+    min_freie_tage: Mapped[int] = mapped_column(Integer, default=1)
+    gewichte: Mapped[dict] = mapped_column(JSON, default=lambda: dict(STANDARD_GEWICHTE))
 
 
 class Einstellung(Base):

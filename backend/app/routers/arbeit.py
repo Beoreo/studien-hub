@@ -10,7 +10,14 @@ from sqlalchemy.orm import Session
 from ..db import get_session
 from ..filter import zu_lokal
 from ..models import ART_FIX, STATUS_BESTAETIGT, Arbeitsblock, Arbeitsregel
-from ..planung_service import REGEL_ID, KeineRegelFehler, bestaetige_woche, lade_regel, schlage_woche_vor
+from ..planung_service import (
+    REGEL_ID,
+    KeineRegelFehler,
+    bestaetige_woche,
+    lade_regel,
+    schlage_woche_vor,
+    verwerfe_woche,
+)
 from ..schemas import (
     ArbeitsblockIn,
     ArbeitsblockOut,
@@ -35,6 +42,7 @@ def regel_speichern(daten: ArbeitsregelSchema, session: Session = Depends(get_se
     werte = daten.model_dump()
     # Datumswerte der freien Tage als ISO-Text in der JSON-Spalte ablegen
     werte["freie_tage"] = daten.model_dump(mode="json")["freie_tage"]
+    werte["gewichte"] = daten.gewichte.model_dump()
     for feld, wert in werte.items():
         setattr(regel, feld, wert)
     session.add(regel)
@@ -177,3 +185,9 @@ def vorschlag_berechnen(
 @router.post("/bestaetigen")
 def vorschlaege_bestaetigen(woche: date = Query(...), session: Session = Depends(get_session)):
     return {"bestaetigt": bestaetige_woche(session, woche)}
+
+
+@router.post("/verwerfen")
+def vorschlaege_verwerfen(woche: date = Query(...), session: Session = Depends(get_session)):
+    """Bricht die noch nicht bestätigten Vorschläge der Woche ab; bestätigte Blöcke bleiben."""
+    return {"verworfen": verwerfe_woche(session, woche)}

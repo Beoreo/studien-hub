@@ -67,6 +67,7 @@ export const api = {
   serieLoeschen: (id, ab) => anfrage(`/api/arbeit/serien/${id}${ab ? `?ab=${ab}` : ''}`, { methode: 'DELETE' }),
   vorschlag: (woche) => anfrage(`/api/arbeit/vorschlag?woche=${woche}`, { methode: 'POST' }),
   bestaetigen: (woche) => anfrage(`/api/arbeit/bestaetigen?woche=${woche}`, { methode: 'POST' }),
+  verwerfen: (woche) => anfrage(`/api/arbeit/verwerfen?woche=${woche}`, { methode: 'POST' }),
 
   tissEinstellungen: () => anfrage('/api/tiss/einstellungen'),
   tissEinstellungenSpeichern: (daten) => anfrage('/api/tiss/einstellungen', { methode: 'PUT', daten }),
@@ -84,6 +85,7 @@ export const TYPEN = [
   { wert: 'UE', name: 'UE' },
   { wert: 'VU', name: 'VU' },
   { wert: 'PRUEFUNG', name: 'Prüfung' },
+  { wert: 'ABGABE', name: 'Abgabe' },
   { wert: 'SONSTIGE', name: 'Sonstige' },
 ]
 export const MARKIERUNGEN = [

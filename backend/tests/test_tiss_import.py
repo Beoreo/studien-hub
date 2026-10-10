@@ -102,3 +102,14 @@ def test_import_plant_betroffene_wochen_neu(session, tiss_ics):
 
     # Woche liegt in der Vergangenheit: nichts wird neu geplant
     assert plane_wochen_neu(session, ergebnis.betroffene_wochen, heute=date(2026, 11, 1)) == []
+
+
+def test_abgabe_wird_erkannt():
+    ics = (
+        "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:a1\nDTSTART;TZID=Europe/Vienna:20261014T235900\n"
+        "DTEND;TZID=Europe/Vienna:20261014T235900\nSUMMARY:185.A91 VU Einführung in die Programmierung 1 - Abgabe Blatt 2\n"
+        "END:VEVENT\nEND:VCALENDAR\n"
+    )
+    termin = parse_ical(ics)[0]
+    assert termin.typ == "ABGABE"
+    assert termin.lva_nummer == "185.A91"

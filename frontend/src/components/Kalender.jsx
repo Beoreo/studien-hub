@@ -46,6 +46,7 @@ function EreignisInhalt({ ereignis }) {
       <div className="ereignis-zeile">
         <Symbole props={props} />
         {props.pruefung && <strong>Prüfung · </strong>}
+        {props.abgabe && <strong>Abgabe · </strong>}
         <span className="ereignis-titel">{event.title}</span>
       </div>
       {timeText && <div className="ereignis-zeit">{timeText}</div>}
@@ -108,6 +109,18 @@ export default function Kalender({ lvas }) {
     }
   }
 
+  // Abbrechen vor der Bestätigung: offene Vorschläge der Woche löschen, bestätigte Blöcke bleiben
+  async function verwerfen() {
+    try {
+      const { verworfen } = await api.verwerfen(aktuelleWoche())
+      setMeldung({ art: 'ok', text: `${verworfen} Vorschläge verworfen.` })
+      setVorschlag(null)
+      neuLaden()
+    } catch (e) {
+      setMeldung({ art: 'fehler', text: e.message })
+    }
+  }
+
   async function verschieben(info) {
     try {
       await api.blockAendern(info.event.extendedProps.blockId, {
@@ -130,6 +143,9 @@ export default function Kalender({ lvas }) {
             Arbeitszeit vorschlagen
           </button>
           <button onClick={alleBestaetigen}>Vorschläge der Woche bestätigen</button>
+          <button className="zweitrangig" onClick={verwerfen} title="Offene Vorschläge dieser Woche löschen">
+            Vorschläge verwerfen
+          </button>
           <span className="legende">
             {MARKIERUNGEN.map((m) => (
               <span key={m.wert}>
@@ -154,6 +170,16 @@ export default function Kalender({ lvas }) {
             Woche ab {new Date(vorschlag.woche).toLocaleDateString('de-AT')}: {vorschlag.verplant_stunden} von{' '}
             {vorschlag.soll_stunden} offenen Stunden verplant.
             {vorschlag.fehlende_stunden > 0 && <> Es fehlen {vorschlag.fehlende_stunden} Stunden.</>}
+            {vorschlag.begruendungen.length > 0 && (
+              <div className="begruendung">
+                Warum so:
+                <ul>
+                  {vorschlag.begruendungen.map((text) => (
+                    <li key={text}>{text}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {vorschlag.geopferte_termine.length > 0 && (
               <div>
                 Dafür müssten diese Termine ohne Aufzeichnung entfallen:
@@ -165,6 +191,14 @@ export default function Kalender({ lvas }) {
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+            {vorschlag.bloecke.length > 0 && (
+              <div className="dialog-knoepfe">
+                <button onClick={alleBestaetigen}>Übernehmen</button>
+                <button className="zweitrangig" onClick={verwerfen}>
+                  Verwerfen
+                </button>
               </div>
             )}
           </div>
