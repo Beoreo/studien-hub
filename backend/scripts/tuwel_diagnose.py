@@ -21,7 +21,8 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.config import TUWEL_URL, tuwel_token  # noqa: E402
+from app.config import PROJEKT_ORDNER, TUWEL_URL, tuwel_token  # noqa: E402
+from app.tuwel_token import schreibe_env_wert  # noqa: E402
 
 APP_USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) MoodleMobile 4.4.0 (44000)"
 LOGIN_TYPEN = {1: "1 = Login in der App", 2: "2 = Login im Browser (SSO)", 3: "3 = eingebetteter Browser"}
@@ -31,7 +32,8 @@ def ja(wert: bool) -> str:
     return "Ja" if wert else "Nein"
 
 
-def schritt1(passport: str) -> None:
+def schritt1(passport: str) -> str | None:
+    """Prüft den Link und liefert den Token daraus (zweiter Teil) für Schritt 3."""
     print("\n== Schritt 1: Aufbau des Links ==")
     eingabe = getpass.getpass("Text nach moodledownloader://token= (unsichtbar): ")
     roh = unquote(eingabe.strip().strip("'\""))
@@ -42,7 +44,7 @@ def schritt1(passport: str) -> None:
         text = base64.b64decode(roh + "=" * (-len(roh) % 4)).decode("utf-8")
     except (binascii.Error, ValueError, UnicodeDecodeError):
         print("Base64 dekodierbar: Nein")
-        return
+        return None
     teile = text.split(":::")
     print(f"Base64 dekodierbar: Ja")
     print(f"Drei Teile: {ja(len(teile) == 3)} (Anzahl {len(teile)}, Längen {[len(t) for t in teile]})")
@@ -57,6 +59,7 @@ def schritt1(passport: str) -> None:
     print(f"Zweiter Teil == gespeicherter TUWEL_TOKEN: {ja(len(teile) > 1 and teile[1] == gespeichert)}")
     if len(teile) > 2:
         print(f"Dritter Teil (privater Token) vorhanden: {ja(bool(teile[2]))}, Länge {len(teile[2])}")
+    return teile[1] if len(teile) > 1 else None
 
 
 def gespeicherter_token() -> None:
@@ -94,13 +97,10 @@ def schritt2(http: httpx.Client) -> None:
             print(f"  {feld}: {wert}")
 
 
-def schritt3(http: httpx.Client) -> None:
-    print("\n== Schritt 3: core_webservice_get_site_info mit Token ==")
-    token = tuwel_token()
-    if not token:
-        print("Übersprungen: kein Token gespeichert.")
-        return
-    for name, kopf in (("ohne App-User-Agent", {}), ("mit App-User-Agent (MoodleMobile)", {"User-Agent": APP_USER_AGENT})):
+def teste_token(http: httpx.Client, bezeichnung: str, token: str) -> bool:
+    """Ruft core_webservice_get_site_info ohne und mit App-User-Agent auf; True, wenn einer klappt."""
+    ok = False
+    for name, kopf in (("ohne App-User-Agent", {}), ("mit App-User-Agent", {"User-Agent": APP_USER_AGENT})):
         antwort = http.post(
             f"{TUWEL_URL}/webservice/rest/server.php",
             data={"wstoken": token, "wsfunction": "core_webservice_get_site_info", "moodlewsrestformat": "json"},
@@ -109,17 +109,37 @@ def schritt3(http: httpx.Client) -> None:
         try:
             d = antwort.json()
         except ValueError:
-            print(f"{name}: HTTP {antwort.status_code}, keine JSON-Antwort")
+            print(f"{bezeichnung}, {name}: HTTP {antwort.status_code}, keine JSON-Antwort")
             continue
         if isinstance(d, dict) and "errorcode" in d:
             meldung = str(d.get("message", "")).replace(token, "***")
             debug = str(d.get("debuginfo", "")).replace(token, "***")
-            print(f"{name}: FEHLER {d['errorcode']} – {meldung}" + (f" | debuginfo: {debug}" if debug else ""))
+            print(f"{bezeichnung}, {name}: FEHLER {d['errorcode']} – {meldung}" + (f" | debuginfo: {debug}" if debug else ""))
         else:
+            ok = True
             funktionen = {f.get("name") for f in d.get("functions", [])}
-            print(f"{name}: OK – angemeldet als {d.get('fullname')}, {len(funktionen)} Funktionen freigegeben")
+            print(f"{bezeichnung}, {name}: OK – angemeldet als {d.get('fullname')}, {len(funktionen)} Funktionen freigegeben")
             for f in ("core_enrol_get_users_courses", "core_course_get_contents"):
                 print(f"   {f}: {ja(f in funktionen) if funktionen else 'Liste nicht geliefert'}")
+    return ok
+
+
+def schritt3(http: httpx.Client, link_token: str | None) -> None:
+    print("\n== Schritt 3: core_webservice_get_site_info mit Token ==")
+    gespeichert = tuwel_token()
+    if link_token and link_token != gespeichert:
+        # Den frischen Token aus dem Link sofort testen – ältere Tokens verwirft TUWEL offenbar
+        if teste_token(http, "Token aus dem Link", link_token):
+            antwort = input("Diesen Token als TUWEL_TOKEN in der .env speichern? [j/N] ").strip().lower()
+            if antwort in ("j", "ja", "y"):
+                schreibe_env_wert(PROJEKT_ORDNER / ".env", "TUWEL_TOKEN", link_token)
+                print("Gespeichert.")
+        if gespeichert:
+            teste_token(http, "Gespeicherter Token", gespeichert)
+    elif gespeichert:
+        teste_token(http, "Gespeicherter Token" + (" (= Link)" if link_token else ""), gespeichert)
+    else:
+        print("Übersprungen: kein Token vorhanden.")
 
 
 def main() -> int:
@@ -129,12 +149,11 @@ def main() -> int:
     parser.add_argument("--passport", default="12345")
     argumente = parser.parse_args()
 
-    if argumente.link:
-        schritt1(argumente.passport)
+    link_token = schritt1(argumente.passport) if argumente.link else None
     gespeicherter_token()
     with httpx.Client(timeout=30, follow_redirects=True) as http:
         schritt2(http)
-        schritt3(http)
+        schritt3(http, link_token)
     return 0
 
 
