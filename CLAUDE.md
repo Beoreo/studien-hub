@@ -64,8 +64,10 @@ cd backend; .\.venv\Scripts\python -m pytest
 # Backend starten (http://127.0.0.1:8000, API-Doku unter /docs)
 cd backend; .\.venv\Scripts\python -m uvicorn app.main:app --reload
 
-# Frontend (http://localhost:5173, leitet /api an das Backend weiter)
+# Entwicklung: startet Backend (Port 8000, falls nicht schon laufend) und Vite (http://localhost:5173)
 cd frontend; npm install; npm run dev
+# nur Vite, ohne Backend
+cd frontend; npm run dev:frontend
 
 # Frontend bauen – danach liefert das Backend die Oberfläche selbst unter http://127.0.0.1:8000 aus
 cd frontend; npm run build
