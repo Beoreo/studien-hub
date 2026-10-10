@@ -14,6 +14,7 @@ import getpass
 import hashlib
 import json
 import sys
+import time
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -134,12 +135,48 @@ def schritt3(http: httpx.Client, link_token: str | None) -> None:
             if antwort in ("j", "ja", "y"):
                 schreibe_env_wert(PROJEKT_ORDNER / ".env", "TUWEL_TOKEN", link_token)
                 print("Gespeichert.")
+                return  # der alte Wert ist überschrieben, ihn erneut zu testen wäre irreführend
         if gespeichert:
-            teste_token(http, "Gespeicherter Token", gespeichert)
+            teste_token(http, "Bisher gespeicherter (alter) Token", gespeichert)
     elif gespeichert:
         teste_token(http, "Gespeicherter Token" + (" (= Link)" if link_token else ""), gespeichert)
     else:
         print("Übersprungen: kein Token vorhanden.")
+
+
+def kurzstatus(http: httpx.Client, token: str) -> str:
+    """Ergebnis eines einzelnen site_info-Aufrufs als kurzer Text (ohne Token)."""
+    try:
+        d = http.post(
+            f"{TUWEL_URL}/webservice/rest/server.php",
+            data={"wstoken": token, "wsfunction": "core_webservice_get_site_info", "moodlewsrestformat": "json"},
+        ).json()
+    except (httpx.HTTPError, ValueError) as fehler:
+        return f"keine Antwort ({type(fehler).__name__})"
+    if isinstance(d, dict) and "errorcode" in d:
+        return f"{d['errorcode']} – {str(d.get('message', '')).replace(token, '***')}"
+    return "OK"
+
+
+def beobachten(http: httpx.Client, token: str, takt: int, minuten: int) -> None:
+    """Misst, wie lange der Token gilt: fragt im Takt nach und meldet jede Zustandsänderung."""
+    print(f"\n== Lebensdauer: alle {takt} s, höchstens {minuten} min (Strg+C beendet) ==")
+    beginn = time.monotonic()
+    letzter = None
+    try:
+        while time.monotonic() - beginn < minuten * 60:
+            status = kurzstatus(http, token)
+            vergangen = int(time.monotonic() - beginn)
+            if status != letzter:
+                print(f"{time.strftime('%H:%M:%S')}  nach {vergangen // 60:>2} min {vergangen % 60:02d} s: {status}", flush=True)
+                letzter = status
+            if status.startswith("invalidtoken"):
+                print("Token ist gelöscht – Beobachtung beendet.")
+                return
+            time.sleep(takt)
+        print(f"Nach {minuten} min noch gültig: {letzter}")
+    except KeyboardInterrupt:
+        print(f"\nAbgebrochen nach {int(time.monotonic() - beginn)} s, letzter Zustand: {letzter}")
 
 
 def main() -> int:
@@ -147,6 +184,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--link", action="store_true", help="Schritt 1 mit verdeckter Eingabe des Links")
     parser.add_argument("--passport", default="12345")
+    parser.add_argument("--beobachten", action="store_true", help="Lebensdauer des Tokens messen")
+    parser.add_argument("--takt", type=int, default=20, help="Sekunden zwischen zwei Abfragen")
+    parser.add_argument("--minuten", type=int, default=45, help="höchstens so lange beobachten")
     argumente = parser.parse_args()
 
     link_token = schritt1(argumente.passport) if argumente.link else None
@@ -154,6 +194,10 @@ def main() -> int:
     with httpx.Client(timeout=30, follow_redirects=True) as http:
         schritt2(http)
         schritt3(http, link_token)
+        if argumente.beobachten:
+            ziel = link_token or tuwel_token()
+            if ziel:
+                beobachten(http, ziel, argumente.takt, argumente.minuten)
     return 0
 
 
