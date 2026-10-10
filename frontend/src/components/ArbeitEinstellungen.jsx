@@ -11,6 +11,61 @@ const STANDARD_REGEL = {
   max_block_minuten: 480,
   puffer_minuten: 30,
   arbeitgeber: '',
+  freie_tage: [],
+}
+
+const formatiere = (iso) => new Date(iso).toLocaleDateString('de-AT')
+
+// Zusätzliche freie Tage neben den gesetzlichen Feiertagen (die kommen automatisch dazu)
+function FreieTage({ werte, onChange }) {
+  const [neu, setNeu] = useState({ von: '', bis: '', bezeichnung: '', jaehrlich: false })
+  const setze = (feld) => (e) => setNeu({ ...neu, [feld]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
+
+  const hinzufuegen = () => {
+    if (!neu.von) return
+    onChange([...werte, { ...neu, bis: neu.bis || null, bezeichnung: neu.bezeichnung || null }])
+    setNeu({ von: '', bis: '', bezeichnung: '', jaehrlich: false })
+  }
+
+  return (
+    <div>
+      {werte.length > 0 && (
+        <table className="freie-tage">
+          <tbody>
+            {werte.map((f, i) => (
+              <tr key={i}>
+                <td>
+                  {f.jaehrlich ? formatiere(f.von).replace(/\d{4}$/, '') : formatiere(f.von)}
+                  {f.bis && f.bis !== f.von && <> – {f.jaehrlich ? formatiere(f.bis).replace(/\d{4}$/, '') : formatiere(f.bis)}</>}
+                </td>
+                <td>{f.bezeichnung || 'frei'}</td>
+                <td>{f.jaehrlich && 'jährlich'}</td>
+                <td>
+                  <button type="button" className="klein" onClick={() => onChange(werte.filter((_, j) => j !== i))}>
+                    entfernen
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <span className="zeile">
+        <input type="date" value={neu.von} onChange={setze('von')} title="von" />
+        <input type="date" value={neu.bis} min={neu.von} onChange={setze('bis')} title="bis (optional)" />
+        <input value={neu.bezeichnung} onChange={setze('bezeichnung')} placeholder="z. B. Urlaub" />
+      </span>
+      <span className="zeile">
+        <label className="inline">
+          <input type="checkbox" checked={neu.jaehrlich} onChange={setze('jaehrlich')} />
+          jedes Jahr (z. B. 24.12.)
+        </label>
+        <button type="button" className="klein" onClick={hinzufuegen} disabled={!neu.von}>
+          hinzufügen
+        </button>
+      </span>
+    </div>
+  )
 }
 
 function TagAuswahl({ werte, onChange }) {
@@ -42,7 +97,13 @@ function RegelFormular({ setMeldung }) {
       .then((r) =>
         setRegel(
           r
-            ? { ...r, fruehester_beginn: kurzeZeit(r.fruehester_beginn), spaetestes_ende: kurzeZeit(r.spaetestes_ende), arbeitgeber: r.arbeitgeber || '' }
+            ? {
+                ...r,
+                fruehester_beginn: kurzeZeit(r.fruehester_beginn),
+                spaetestes_ende: kurzeZeit(r.spaetestes_ende),
+                arbeitgeber: r.arbeitgeber || '',
+                freie_tage: r.freie_tage || [],
+              }
             : STANDARD_REGEL,
         ),
       )
@@ -103,6 +164,14 @@ function RegelFormular({ setMeldung }) {
         Arbeitgeber
         <input value={regel.arbeitgeber} onChange={setze('arbeitgeber')} />
       </label>
+      <div className="feld">
+        <span>Zusätzliche freie Tage</span>
+        <p className="hinweis">
+          Gesetzliche Feiertage in Österreich sind automatisch gesperrt. Hier kommen weitere Tage dazu, an denen keine
+          Arbeitszeit vorgeschlagen wird. Änderungen gelten nach „Speichern“.
+        </p>
+        <FreieTage werte={regel.freie_tage} onChange={(freie_tage) => setRegel({ ...regel, freie_tage })} />
+      </div>
       <button type="submit">Speichern</button>
     </form>
   )

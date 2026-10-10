@@ -33,6 +33,7 @@ studien-hub/
       schemas.py        Pydantic-Schemas der API
       tiss_import.py    Parsen und Abgleich des TISS-iCal-Feeds
       planung.py        Verteilungs-Algorithmus (reine Logik, ohne DB)
+      feiertage.py      gesetzliche Feiertage AT (Paket holidays) und freie Tage der Arbeitsregel
       planung_service.py  DB-Anbindung des Algorithmus
       filter.py         gemeinsame Filterlogik für Kalender und Export
       export.py         iCal-, CSV- und PDF-Export
@@ -81,5 +82,9 @@ cd frontend; npm run build
   Verschobene oder bestätigte Vorschläge sind `bestaetigt` und werden nicht mehr neu geplant.
 - `Arbeitsregel.stunden_pro_woche` ist die Gesamtstundenzahl; bestätigte Blöcke der Woche werden
   abgezogen, der Rest wird verteilt.
+- An gesetzlichen Feiertagen (holidays, Land AT) und an den `freie_tage` der Arbeitsregel
+  (einzelne Tage, Zeiträume, optional jährlich) wird keine Arbeitszeit vorgeschlagen. Beides
+  erscheint im Kalender als ganztägiger grauer Eintrag.
+- Neue Spalten in bestehenden Tabellen in `db.NACHTRAEGLICHE_SPALTEN` eintragen (einfache Migration).
 - Ein erneuter TISS-Import übernimmt nur Änderungen (Abgleich über die iCal-UID) und plant nur die
   betroffenen Wochen neu.

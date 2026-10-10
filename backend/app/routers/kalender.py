@@ -1,18 +1,22 @@
 """Kalenderdaten im FullCalendar-Format und Export (iCal, CSV, PDF)."""
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from ..db import get_session
+from ..feiertage import feiertage, freie_tage_expandieren
 from ..export import als_csv, als_ical, als_pdf, sammle_eintraege
 from ..filter import Filter, arbeitsbloecke_filtern, filter_aus_anfrage, termine_filtern
 from ..models import STATUS_VORSCHLAG, Arbeitsblock, Termin
+from ..planung_service import lade_regel
 
 router = APIRouter(prefix="/api", tags=["Kalender und Export"])
 
 ARBEIT_FARBE = "#475569"
+FEIERTAG_FARBE = "#9ca3af"
+FREI_FARBE = "#d1d5db"
 PRUEFUNG_FARBE_RAND = "#000000"
 
 
@@ -62,11 +66,47 @@ def block_event(b: Arbeitsblock) -> dict:
     }
 
 
+def tages_event(tag: date, titel: str, art: str) -> dict:
+    """Ganztägiger grauer Eintrag für Feiertage und freie Tage."""
+    farbe = FEIERTAG_FARBE if art == "feiertag" else FREI_FARBE
+    return {
+        "id": f"{art}-{tag.isoformat()}",
+        "title": titel,
+        "start": tag.isoformat(),
+        "end": (tag + timedelta(days=1)).isoformat(),
+        "allDay": True,
+        "backgroundColor": farbe,
+        "borderColor": farbe,
+        "textColor": "#1f2937",
+        "editable": False,
+        "classNames": [art],
+        "extendedProps": {"art": art},
+    }
+
+
+def freie_tage_events(session: Session, f: Filter) -> list[dict]:
+    if not (f.von and f.bis):
+        return []
+    von, bis = f.von.date(), (f.bis - timedelta(microseconds=1)).date()
+    events = [tages_event(tag, name, "feiertag") for tag, name in feiertage(von, bis).items()]
+    regel = lade_regel(session)
+    if regel and regel.freie_tage:
+        gesetzlich = {e["start"] for e in events}
+        events += [
+            tages_event(tag, f"Frei: {name}", "frei")
+            for tag, name in freie_tage_expandieren(regel.freie_tage, von, bis).items()
+            if tag.isoformat() not in gesetzlich
+        ]
+    return events
+
+
 @router.get("/kalender")
 def kalender(f: Filter = Depends(filter_aus_anfrage), session: Session = Depends(get_session)) -> list[dict]:
-    return [termin_event(t) for t in termine_filtern(session, f)] + [
-        block_event(b) for b in arbeitsbloecke_filtern(session, f)
-    ]
+    return (
+        freie_tage_events(session, f)
+        + [termin_event(t) for t in termine_filtern(session, f)]
+        + [block_event(b) for b in arbeitsbloecke_filtern(session, f)]
+    )
 
 
 def _dateiname(f: Filter, endung: str) -> str:

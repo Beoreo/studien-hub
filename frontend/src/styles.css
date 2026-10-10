@@ -277,6 +277,33 @@ input.kurz {
   border-color: #0f172a !important;
 }
 
+.legende-feiertag {
+  background: #9ca3af;
+  color: #1f2937;
+  padding: 0 0.4rem;
+  border-radius: 3px;
+}
+
+.fc .feiertag,
+.fc .frei {
+  cursor: default;
+  font-style: italic;
+}
+
+.freie-tage {
+  border-collapse: collapse;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.freie-tage td {
+  padding: 0.15rem 0.3rem 0.15rem 0;
+}
+
+.freie-tage input[type='date'] {
+  width: 9.5rem;
+}
+
 .fc .arbeit {
   cursor: move;
 }
@@ -393,4 +420,15 @@ label.block {
 
 .mitte {
   text-align: center !important;
+}
+
+.formular .feld {
+  margin-bottom: 0.9rem;
+  font-size: 0.9rem;
+}
+
+.formular label.inline {
+  flex-direction: row;
+  align-items: center;
+  margin: 0;
 }

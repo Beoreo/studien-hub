@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -44,7 +44,24 @@ def init_db(url: str = DATENBANK_URL) -> Engine:
     _engine = erstelle_engine(url)
     SessionLocal.configure(bind=_engine)
     Base.metadata.create_all(_engine)
+    _fehlende_spalten_ergaenzen(_engine)
     return _engine
+
+
+# Spalten, die nach der ersten Version dazugekommen sind: (Tabelle, Spalte, SQL-Definition)
+NACHTRAEGLICHE_SPALTEN = [
+    ("arbeitsregel", "freie_tage", "JSON DEFAULT '[]'"),
+]
+
+
+def _fehlende_spalten_ergaenzen(engine: Engine) -> None:
+    """Minimale Migration: ergänzt neue Spalten in bestehenden SQLite-Datenbanken."""
+    pruefer = inspect(engine)
+    with engine.begin() as verbindung:
+        for tabelle, spalte, definition in NACHTRAEGLICHE_SPALTEN:
+            vorhanden = {s["name"] for s in pruefer.get_columns(tabelle)}
+            if spalte not in vorhanden:
+                verbindung.execute(text(f"ALTER TABLE {tabelle} ADD COLUMN {spalte} {definition}"))
 
 
 def get_session() -> Iterator[Session]:

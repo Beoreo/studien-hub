@@ -7,6 +7,7 @@ Umsetzung von KONZEPT.md, Abschnitt „Flexible Arbeitszeiten verteilen“:
 2. Weiche Termine gewichten: aufgezeichnete Termine ohne Anwesenheitspflicht dürfen überplant
    werden; nicht aufgezeichnete nur in einer zweiten Runde, wenn die Stunden sonst nicht reichen.
 3. Lücken finden: pro erlaubtem Tag die freien Fenster zwischen frühestem Beginn und spätestem Ende.
+   Feiertage und zusätzliche freie Tage (`Arbeitsregeln.freie_tage`) werden übersprungen.
 4. Lücken bewerten: lange Blöcke vor kurzen, wenige Wechsel Uni/Arbeit, bevorzugte Tage zuerst.
 5. Stunden verteilen: beste Lücken füllen, Mindest- und Maximallänge einhalten.
 6. Das Ergebnis ist ein Vorschlag; das Speichern übernimmt `planung_service`.
@@ -73,6 +74,8 @@ class Arbeitsregeln:
     min_block: timedelta = timedelta(hours=2)
     max_block: timedelta = timedelta(hours=8)
     puffer: timedelta = timedelta(minutes=30)
+    # Feiertage und zusätzliche freie Tage: dort wird nichts vorgeschlagen
+    freie_tage: frozenset[date] = frozenset()
 
 
 @dataclass
@@ -146,7 +149,7 @@ def finde_luecken(woche_start: date, regeln: Arbeitsregeln, sperren: list[Interv
     """Schritt 3: freie Fenster je erlaubtem Arbeitstag, auf 15 Minuten gerundet."""
     for i in range(7):
         tag = woche_start + timedelta(days=i)
-        if tag.weekday() not in regeln.tage:
+        if tag.weekday() not in regeln.tage or tag in regeln.freie_tage:
             continue
         fenster = Intervall(
             datetime.combine(tag, regeln.fruehester_beginn), datetime.combine(tag, regeln.spaetestes_ende)

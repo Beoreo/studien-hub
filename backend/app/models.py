@@ -132,6 +132,9 @@ class Arbeitsregel(Base):
     max_block_minuten: Mapped[int] = mapped_column(Integer, default=480)
     puffer_minuten: Mapped[int] = mapped_column(Integer, default=30)
     arbeitgeber: Mapped[str | None] = mapped_column(String(200))
+    # Zusätzliche freie Tage neben den gesetzlichen Feiertagen, z. B. 24.12. oder Urlaub.
+    # Einträge: {"von": "JJJJ-MM-TT", "bis": "JJJJ-MM-TT" | None, "bezeichnung": str, "jaehrlich": bool}
+    freie_tage: Mapped[list[dict]] = mapped_column(JSON, default=list)
 
 
 class Einstellung(Base):

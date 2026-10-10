@@ -32,7 +32,10 @@ def regel_lesen(session: Session = Depends(get_session)):
 @router.put("/regel", response_model=ArbeitsregelSchema)
 def regel_speichern(daten: ArbeitsregelSchema, session: Session = Depends(get_session)):
     regel = lade_regel(session) or Arbeitsregel(id=REGEL_ID)
-    for feld, wert in daten.model_dump().items():
+    werte = daten.model_dump()
+    # Datumswerte der freien Tage als ISO-Text in der JSON-Spalte ablegen
+    werte["freie_tage"] = daten.model_dump(mode="json")["freie_tage"]
+    for feld, wert in werte.items():
         setattr(regel, feld, wert)
     session.add(regel)
     session.commit()

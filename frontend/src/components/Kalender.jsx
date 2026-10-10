@@ -137,6 +137,7 @@ export default function Kalender({ lvas }) {
               </span>
             ))}
             <span className="legende-vorschlag">Vorschlag</span>
+            <span className="legende-feiertag">Feiertag / frei</span>
           </span>
         </div>
 
@@ -179,7 +180,7 @@ export default function Kalender({ lvas }) {
           height="auto"
           slotMinTime="07:00:00"
           slotMaxTime="22:00:00"
-          allDaySlot={false}
+          allDayText="ganztägig"
           nowIndicator
           editable
           selectable
@@ -189,7 +190,10 @@ export default function Kalender({ lvas }) {
           eventContent={(e) => <EreignisInhalt ereignis={e} />}
           eventDrop={verschieben}
           eventResize={verschieben}
-          eventClick={(info) => setAuswahl({ art: info.event.extendedProps.art, event: info.event })}
+          eventClick={(info) => {
+            const art = info.event.extendedProps.art
+            if (art === 'termin' || art === 'arbeit') setAuswahl({ art, event: info.event })
+          }}
           select={(info) => setAuswahl({ art: 'neu', start: info.start, ende: info.end })}
           datesSet={(info) => setZeitraum({ von: lokalIso(info.start), bis: lokalIso(info.end) })}
         />

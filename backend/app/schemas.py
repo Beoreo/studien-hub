@@ -63,6 +63,23 @@ class TerminUpdate(BaseModel):
     aufzeichnung_abweichung: bool | None = None
 
 
+class FreierTag(BaseModel):
+    """Zusätzlicher freier Tag oder Zeitraum (z. B. 24.12. jährlich oder Urlaub)."""
+
+    von: date
+    bis: date | None = None
+    bezeichnung: str | None = None
+    jaehrlich: bool = False
+
+    @model_validator(mode="after")
+    def _reihenfolge(self):
+        if self.bis is not None and self.bis < self.von:
+            raise ValueError("Ende des freien Zeitraums muss nach dem Beginn liegen")
+        if self.jaehrlich and self.bis is not None and (self.bis - self.von).days > 366:
+            raise ValueError("Ein jährlicher Zeitraum darf höchstens ein Jahr umfassen")
+        return self
+
+
 class ArbeitsregelSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -75,6 +92,12 @@ class ArbeitsregelSchema(BaseModel):
     max_block_minuten: int = Field(480, ge=15, le=24 * 60)
     puffer_minuten: int = Field(30, ge=0, le=240)
     arbeitgeber: str | None = None
+    freie_tage: list[FreierTag] = Field(default_factory=list)
+
+    @field_validator("freie_tage", mode="before")
+    @classmethod
+    def _null_als_leer(cls, wert):
+        return wert or []  # Regeln aus der Zeit vor dieser Spalte haben NULL
 
     @field_validator("tage", "bevorzugte_tage")
     @classmethod

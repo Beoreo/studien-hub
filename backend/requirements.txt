@@ -9,3 +9,4 @@ apscheduler>=3.10,<4
 fpdf2>=2.7.9
 tzdata>=2024.1
 pytest>=8.0
+holidays>=0.50
