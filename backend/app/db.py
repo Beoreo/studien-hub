@@ -69,6 +69,11 @@ def _fehlende_spalten_ergaenzen(engine: Engine) -> None:
                 verbindung.execute(text(f"ALTER TABLE {tabelle} ADD COLUMN {spalte} {definition}"))
 
 
+def ist_initialisiert() -> bool:
+    """True, wenn bereits eine Datenbank verbunden ist (z. B. die In-Memory-Datenbank der Tests)."""
+    return _engine is not None
+
+
 def get_session() -> Iterator[Session]:
     """FastAPI-Abhängigkeit: eine Session pro Anfrage."""
     with SessionLocal() as session:

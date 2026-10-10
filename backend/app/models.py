@@ -160,6 +160,62 @@ class Einstellung(Base):
     wert: Mapped[str | None] = mapped_column(Text)
 
 
+# --- Stufe 2: TUWEL-Sync -------------------------------------------------------
+
+ZUORDNUNG_AUTO = "auto"  # automatisch über LVA-Nummer oder Titel
+ZUORDNUNG_MANUELL = "manuell"  # in der Oberfläche festgelegt
+ZUORDNUNG_AUS = "aus"  # Kurs nicht synchronisieren
+
+DOK_NEU = "neu"
+DOK_GEAENDERT = "geaendert"
+DOK_UNVERAENDERT = "unveraendert"
+
+
+class TuwelKurs(Base):
+    """Ein TUWEL-Kurs, wie ihn die Browser-Erweiterung meldet, und seine Zuordnung zu einer LVA."""
+
+    __tablename__ = "tuwel_kurs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)  # Moodle-Kurs-ID
+    kurzname: Mapped[str] = mapped_column(String(300), default="")
+    name: Mapped[str] = mapped_column(String(500), default="")
+    idnumber: Mapped[str | None] = mapped_column(String(300))
+    lva_id: Mapped[int | None] = mapped_column(ForeignKey("lva.id", ondelete="SET NULL"))
+    zuordnung: Mapped[str] = mapped_column(String(10), default=ZUORDNUNG_AUTO)
+    zuletzt_gesehen: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    lva: Mapped[Lva | None] = relationship()
+
+
+class Dokument(Base):
+    """Eine Datei oder ein Video-Link aus TUWEL, abgelegt pro LVA (KONZEPT.md, Datenmodell)."""
+
+    __tablename__ = "dokument"
+    __table_args__ = (UniqueConstraint("tuwel_cm_id", "schluessel"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lva_id: Mapped[int] = mapped_column(ForeignKey("lva.id", ondelete="CASCADE"), index=True)
+    tuwel_kurs_id: Mapped[int] = mapped_column(Integer, index=True)
+    tuwel_cm_id: Mapped[int] = mapped_column(Integer)  # Aktivität im Kurs
+    # eindeutig je Aktivität: Unterordner/Dateiname, bei Links die URL
+    schluessel: Mapped[str] = mapped_column(String(1000))
+    abschnitt: Mapped[str] = mapped_column(String(300), default="")
+    aktivitaet: Mapped[str] = mapped_column(String(500), default="")
+    dateiname: Mapped[str] = mapped_column(String(500))
+    typ: Mapped[str] = mapped_column(String(12))  # pdf, folien, dokument, sonstiges, video
+    ist_link: Mapped[bool] = mapped_column(Boolean, default=False)  # Video: nur Eintrag, kein Download
+    quelle_url: Mapped[str] = mapped_column(Text)
+    pfad: Mapped[str | None] = mapped_column(Text)  # relativ zum Unterlagen-Ordner
+    pruefsumme: Mapped[str | None] = mapped_column(String(64))  # SHA-256
+    groesse: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(12), default=DOK_NEU)  # Ergebnis des letzten Laufs
+    erstellt_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    geaendert_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    zuletzt_gesehen: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    lva: Mapped[Lva] = relationship()
+
+
 def lies_einstellung(session, schluessel: str) -> str | None:
     eintrag = session.get(Einstellung, schluessel)
     return eintrag.wert if eintrag else None

@@ -475,3 +475,76 @@ button.zweitrangig {
   border-width: 2px !important;
   border-color: #000 !important;
 }
+
+/* TUWEL */
+
+.warnpunkt {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--gefahr);
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
+.tuwel section,
+.tuwel details.formular {
+  margin-bottom: 1.5rem;
+}
+
+.einrichtung summary {
+  cursor: pointer;
+}
+
+.einrichtung summary h2 {
+  display: inline;
+  font-size: 1.2rem;
+}
+
+.einrichtung ol li {
+  margin-bottom: 0.6rem;
+}
+
+code.pfad {
+  word-break: break-all;
+}
+
+.schluessel {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.schluessel input {
+  flex: 1;
+  min-width: 12rem;
+  font-family: ui-monospace, monospace;
+}
+
+.tabelle tr.leise td {
+  color: var(--text-leise);
+}
+
+.lva-unterlagen {
+  border: 1px solid var(--rand);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+  margin-bottom: 0.5rem;
+  background: var(--flaeche);
+}
+
+.lva-unterlagen summary {
+  cursor: pointer;
+}
+
+.marke {
+  display: inline-block;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  margin-left: 0.4rem;
+}

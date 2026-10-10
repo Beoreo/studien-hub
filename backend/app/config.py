@@ -14,6 +14,9 @@ DATENBANK_URL = os.environ.get(
     "STUDIENHUB_DB_URL", f"sqlite:///{(DATEN_ORDNER / 'studienhub.db').as_posix()}"
 )
 FRONTEND_DIST = PROJEKT_ORDNER / "frontend" / "dist"
+# Heruntergeladene TUWEL-Unterlagen, je Semester und LVA ein Ordner
+UNTERLAGEN_ORDNER = Path(os.environ.get("STUDIENHUB_UNTERLAGEN", DATEN_ORDNER / "unterlagen"))
+ERWEITERUNG_ORDNER = PROJEKT_ORDNER / "browser-erweiterung"
 
 # Alle Zeiten werden als naive lokale Zeit in dieser Zone gespeichert.
 ZEITZONE = ZoneInfo("Europe/Vienna")

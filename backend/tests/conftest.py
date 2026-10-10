@@ -4,6 +4,8 @@ import os
 
 os.environ["STUDIENHUB_DB_URL"] = "sqlite://"
 os.environ["STUDIENHUB_SCHEDULER"] = "0"
+# Tests dürfen nie in den echten Unterlagen-Ordner schreiben
+os.environ["STUDIENHUB_UNTERLAGEN"] = __import__("tempfile").mkdtemp(prefix="studienhub-test-")
 
 from pathlib import Path  # noqa: E402
 

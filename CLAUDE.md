@@ -1,7 +1,8 @@
 # Studien-Hub – Hinweise für Claude Code
 
 Das fachliche Konzept steht in `KONZEPT.md`. Vor größeren Änderungen dort nachlesen.
-Aktueller Stand: **Stufe 1** (Kalender, Arbeitszeiten, Filter und Export) ist umgesetzt.
+Aktueller Stand: **Stufe 1** (Kalender, Arbeitszeiten, Filter und Export) ist umgesetzt, **Stufe 2**
+(TUWEL-Sync) läuft über eine Browser-Erweiterung, weil TUWEL Webservice-Tokens nach < 1 min verwirft.
 
 ## Tech-Stack
 
@@ -37,10 +38,15 @@ studien-hub/
       planung_service.py  DB-Anbindung des Algorithmus
       filter.py         gemeinsame Filterlogik für Kalender und Export
       export.py         iCal-, CSV- und PDF-Export
+      tuwel_sync.py     TUWEL-Sync auf Hub-Seite: Kurs->LVA, Prüfsummen, Ablage unter daten/unterlagen
+      tuwel_client.py   Moodle-REST mit Token (derzeit ungenutzt: Tokens leben bei TUWEL < 1 min)
       routers/          API-Endpunkte unter /api/...
     tests/              pytest
   frontend/
     src/                React-Komponenten
+  browser-erweiterung/  TUWEL-Sync (Manifest V3, Chrome/Edge/Firefox), liest TUWEL mit der Browser-Sitzung
+    lib.js tuwel.js hub.js sync.js   testbare Logik; background.js/popup.* nur Browser-Anbindung
+    tests/              node --test
 ```
 
 ## Regeln
@@ -70,6 +76,9 @@ cd frontend; npm install; npm run dev
 # nur Vite, ohne Backend
 cd frontend; npm run dev:frontend
 
+# Tests der Browser-Erweiterung
+cd browser-erweiterung; npm test
+
 # Frontend bauen – danach liefert das Backend die Oberfläche selbst unter http://127.0.0.1:8000 aus
 cd frontend; npm run build
 ```
@@ -92,6 +101,11 @@ cd frontend; npm run build
   erholung, zerstueckelung. Der Vorschlag liefert `begruendungen`; offene Vorschläge lassen sich
   verwerfen (`POST /api/arbeit/verwerfen`).
 - Termine mit „Abgabe/Deadline“ im Titel bekommen den Typ `ABGABE` (Frist, kein Anwesenheitstermin).
+- TUWEL-Sync: Die Erweiterung meldet Kurse (`/api/tuwel/sync/kurse`), Inhalte je Kurs (`/sync/inhalt`, der Hub
+  antwortet mit den URLs, die er braucht) und lädt nur diese hoch (`/sync/datei`). Schreibende Sync-Endpunkte
+  verlangen den Kopf `X-Studienhub-Schluessel`. Neue Datei-Revision in TUWEL = neue URL; bei geändertem Inhalt
+  bleibt die alte Datei als „name (alt JJJJ-MM-TT).ext“ erhalten. Videos nur als Link (`Dokument.ist_link`).
+- Geheimnisse nur in `.env` (ignoriert); `.env.example` bleibt leer (Test + pre-commit-Hook prüfen das).
 - Neue Spalten in bestehenden Tabellen in `db.NACHTRAEGLICHE_SPALTEN` eintragen (einfache Migration).
 - Ein erneuter TISS-Import übernimmt nur Änderungen (Abgleich über die iCal-UID) und plant nur die
   betroffenen Wochen neu.

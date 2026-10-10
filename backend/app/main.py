@@ -8,8 +8,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from .config import FRONTEND_DIST, SCHEDULER_AKTIV, SYNC_UHRZEIT
-from .db import init_db
-from .routers import arbeit, kalender, lvas, termine, tiss
+from .db import init_db, ist_initialisiert
+from .routers import arbeit, kalender, lvas, termine, tiss, tuwel
 
 
 def _starte_scheduler():
@@ -23,7 +23,8 @@ def _starte_scheduler():
 
 @asynccontextmanager
 async def lebenszyklus(app: FastAPI):
-    init_db()
+    if not ist_initialisiert():
+        init_db()
     scheduler = _starte_scheduler() if SCHEDULER_AKTIV else None
     yield
     if scheduler:
@@ -31,7 +32,7 @@ async def lebenszyklus(app: FastAPI):
 
 
 app = FastAPI(title="Studien-Hub", version="0.1.0", lifespan=lebenszyklus)
-for modul in (lvas, termine, arbeit, tiss, kalender):
+for modul in (lvas, termine, arbeit, tiss, tuwel, kalender):
     app.include_router(modul.router)
 
 

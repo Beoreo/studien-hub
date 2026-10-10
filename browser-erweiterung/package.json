@@ -1,0 +1,9 @@
+{
+  "name": "studien-hub-tuwel-sync",
+  "private": true,
+  "type": "module",
+  "description": "Nur für die Tests (node --test); der Browser liest manifest.json.",
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\""
+  }
+}

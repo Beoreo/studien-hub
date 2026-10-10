@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <title>Studien-Hub TUWEL-Sync</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <h1>TUWEL-Sync</h1>
+    <section id="zustand" class="zustand">Lade …</section>
+    <button id="sync">Jetzt synchronisieren</button>
+    <p class="hinweis">Läuft täglich und beim Öffnen von TUWEL (höchstens alle 6 h). Du musst in TUWEL eingeloggt sein.</p>
+
+    <details id="einstellungen">
+      <summary>Einstellungen</summary>
+      <label>
+        Adresse des Studien-Hubs
+        <input id="hubUrl" type="url" placeholder="http://127.0.0.1:8000" />
+      </label>
+      <label>
+        Schlüssel (im Hub unter „TUWEL“)
+        <input id="schluessel" type="password" autocomplete="off" />
+      </label>
+      <div class="zeile">
+        <button id="speichern">Speichern und prüfen</button>
+        <span id="pruefung"></span>
+      </div>
+    </details>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

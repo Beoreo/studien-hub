@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Studien-Hub TUWEL-Sync",
+  "version": "0.1.0",
+  "description": "Lädt deine TUWEL-Unterlagen mit deiner Browser-Anmeldung in den lokalen Studien-Hub.",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": [
+    "https://tuwel.tuwien.ac.at/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Studien-Hub TUWEL-Sync",
+    "default_popup": "popup.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tuwel-sync@studien-hub.local",
+      "strict_min_version": "121.0"
+    }
+  }
+}

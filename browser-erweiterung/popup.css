@@ -1,0 +1,83 @@
+body {
+  font: 13px system-ui, 'Segoe UI', sans-serif;
+  width: 320px;
+  margin: 0;
+  padding: 0.8rem;
+  color: #0f172a;
+}
+
+h1 {
+  font-size: 1rem;
+  margin: 0 0 0.6rem;
+}
+
+.zustand {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.6rem;
+  word-break: break-word;
+}
+
+.zustand.ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.zustand.fehler,
+.zustand.login,
+.zustand.einrichten {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.zustand.laeuft {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.zustand ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1rem;
+}
+
+.klein,
+.hinweis {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.35rem 0.7rem;
+  border-radius: 5px;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0.5rem 0;
+}
+
+input {
+  font: inherit;
+  padding: 0.3rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+}
+
+.zeile {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}

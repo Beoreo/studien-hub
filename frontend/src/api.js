@@ -69,6 +69,14 @@ export const api = {
   bestaetigen: (woche) => anfrage(`/api/arbeit/bestaetigen?woche=${woche}`, { methode: 'POST' }),
   verwerfen: (woche) => anfrage(`/api/arbeit/verwerfen?woche=${woche}`, { methode: 'POST' }),
 
+  tuwelStatus: () => anfrage('/api/tuwel/status'),
+  tuwelEinrichtung: () => anfrage('/api/tuwel/einrichtung'),
+  tuwelNeuerSchluessel: () => anfrage('/api/tuwel/einrichtung/neuer-schluessel', { methode: 'POST' }),
+  tuwelKurse: () => anfrage('/api/tuwel/kurse'),
+  tuwelKursZuordnen: (id, daten) => anfrage(`/api/tuwel/kurse/${id}`, { methode: 'PATCH', daten }),
+  tuwelDokumente: () => anfrage('/api/tuwel/dokumente'),
+  dokumentUrl: (id) => `/api/tuwel/dokumente/${id}/datei`,
+
   tissEinstellungen: () => anfrage('/api/tiss/einstellungen'),
   tissEinstellungenSpeichern: (daten) => anfrage('/api/tiss/einstellungen', { methode: 'PUT', daten }),
   tissImport: () => anfrage('/api/tiss/import', { methode: 'POST' }),
