@@ -69,7 +69,11 @@ class TuwelClient:
             raise TuwelFehler("TUWEL lieferte keine JSON-Antwort (Wartung oder Login-Seite?)", funktion=funktion) from None
         if isinstance(ergebnis, dict) and ("exception" in ergebnis or "errorcode" in ergebnis):
             code = ergebnis.get("errorcode")
-            meldung = HINWEISE.get(code, ergebnis.get("message") or "Unbekannter Moodle-Fehler")
+            # Originaltext von Moodle mitgeben (unterscheidet z. B. „nicht gefunden“ und „abgelaufen“)
+            original = str(ergebnis.get("message") or "").replace(self._token, "***")
+            meldung = HINWEISE.get(code, original or "Unbekannter Moodle-Fehler")
+            if original and original != meldung:
+                meldung += f" TUWEL meldet: „{original}“"
             raise TuwelFehler(f"{funktion}: {meldung} ({code})", fehlercode=code, funktion=funktion)
         return ergebnis
 

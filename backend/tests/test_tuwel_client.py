@@ -55,6 +55,7 @@ def test_moodle_fehler_wird_verstaendlich_und_ohne_token_gemeldet():
         client.seiteninfo()
     assert fehler.value.fehlercode == "invalidtoken"
     assert "Sicherheitsschlüssel" in str(fehler.value)
+    assert "token not found" in str(fehler.value)  # Originaltext von Moodle
     assert TOKEN not in str(fehler.value)
 
 
