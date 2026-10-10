@@ -1,0 +1,396 @@
+:root {
+  --hintergrund: #f8fafc;
+  --flaeche: #ffffff;
+  --rand: #e2e8f0;
+  --text: #0f172a;
+  --text-leise: #64748b;
+  --akzent: #2563eb;
+  --gefahr: #dc2626;
+  --ok: #15803d;
+  --warnung: #b45309;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--hintergrund);
+}
+
+body {
+  margin: 0;
+}
+
+.kopf {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0.6rem 1.2rem;
+  background: var(--flaeche);
+  border-bottom: 1px solid var(--rand);
+  flex-wrap: wrap;
+}
+
+.kopf h1 {
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+.reiter {
+  background: none;
+  color: var(--text-leise);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.4rem 0.8rem;
+}
+
+.reiter.aktiv {
+  color: var(--akzent);
+  border-bottom-color: var(--akzent);
+}
+
+button,
+.knopf {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--akzent);
+  background: var(--akzent);
+  color: white;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.klein {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+  background: var(--flaeche);
+  color: var(--akzent);
+}
+
+button.gefahr {
+  background: var(--gefahr);
+  border-color: var(--gefahr);
+  color: white;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--rand);
+  border-radius: 4px;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  margin-right: 0.35rem;
+}
+
+input.kurz {
+  width: 6rem;
+}
+
+.seite {
+  padding: 1rem 1.2rem;
+  max-width: 1200px;
+}
+
+.hinweis {
+  color: var(--text-leise);
+  font-size: 0.85rem;
+}
+
+.meldung {
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  margin: 0.5rem 0;
+  position: relative;
+  cursor: default;
+}
+
+.meldung.fehler {
+  background: #fef2f2;
+  color: var(--gefahr);
+  border: 1px solid #fecaca;
+}
+
+.meldung.ok {
+  background: #f0fdf4;
+  color: var(--ok);
+  border: 1px solid #bbf7d0;
+}
+
+.meldung.warnung {
+  background: #fffbeb;
+  color: var(--warnung);
+  border: 1px solid #fde68a;
+}
+
+.meldung ul {
+  margin: 0.3rem 0 0;
+}
+
+.schliessen {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.4rem;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  padding: 0 0.3rem;
+}
+
+/* Kalender */
+
+.kalender-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 1rem;
+  padding: 1rem 1.2rem;
+}
+
+@media (max-width: 800px) {
+  .kalender-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.filter {
+  background: var(--flaeche);
+  border: 1px solid var(--rand);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.88rem;
+  align-self: start;
+}
+
+.filter h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-leise);
+  margin: 0.9rem 0 0.3rem;
+}
+
+.filter label {
+  display: flex;
+  align-items: center;
+  padding: 0.1rem 0;
+}
+
+.filter-lva span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter select,
+.filter input[type='month'] {
+  width: 100%;
+  margin-bottom: 0.3rem;
+  box-sizing: border-box;
+}
+
+.export-knoepfe {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.farbpunkt {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  flex: none;
+}
+
+.kalender-bereich {
+  background: var(--flaeche);
+  border: 1px solid var(--rand);
+  border-radius: 8px;
+  padding: 0.8rem;
+  min-width: 0;
+}
+
+.werkzeuge {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.legende {
+  margin-left: auto;
+  display: flex;
+  gap: 0.8rem;
+  font-size: 0.8rem;
+  color: var(--text-leise);
+  flex-wrap: wrap;
+}
+
+.legende-vorschlag {
+  border: 1px dashed var(--text-leise);
+  padding: 0 0.4rem;
+  border-radius: 3px;
+}
+
+.ereignis {
+  overflow: hidden;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  padding: 1px 2px;
+}
+
+.ereignis-zeile {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ereignis-zeit,
+.ereignis-ort {
+  opacity: 0.85;
+  font-size: 0.72rem;
+}
+
+.symbole {
+  margin-right: 0.2rem;
+}
+
+.fc .pruefung {
+  border-width: 2px !important;
+  box-shadow: inset 0 0 0 1px white;
+}
+
+.fc .vorschlag {
+  opacity: 0.6;
+  border-style: dashed !important;
+  border-color: #0f172a !important;
+}
+
+.fc .arbeit {
+  cursor: move;
+}
+
+/* Dialog */
+
+.dialog-hintergrund {
+  position: fixed;
+  inset: 0;
+  background: rgb(15 23 42 / 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+
+.dialog {
+  background: var(--flaeche);
+  border-radius: 10px;
+  padding: 1.2rem 1.4rem;
+  width: min(460px, 100%);
+  position: relative;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.2);
+}
+
+.dialog h2 {
+  font-size: 1.1rem;
+  margin: 0 1.5rem 0.4rem 0;
+  display: flex;
+  align-items: center;
+}
+
+.dialog h3 {
+  font-size: 0.9rem;
+  margin: 1rem 0 0.4rem;
+}
+
+.abweichung {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0.3rem 0;
+}
+
+label.block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.dialog-knoepfe {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Formulare und Tabellen */
+
+.formular label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.7rem;
+  font-size: 0.9rem;
+}
+
+.formular input:not([type='checkbox']):not([type='file']) {
+  max-width: 28rem;
+}
+
+.formular .tage,
+.formular .zeile {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.formular .tage label {
+  flex-direction: row;
+  margin: 0;
+}
+
+.zwei-spalten {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 2rem;
+}
+
+.tabelle-huelle {
+  overflow-x: auto;
+}
+
+.tabelle {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.88rem;
+  background: var(--flaeche);
+}
+
+.tabelle th,
+.tabelle td {
+  border-bottom: 1px solid var(--rand);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+
+.tabelle th {
+  color: var(--text-leise);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mitte {
+  text-align: center !important;
+}
