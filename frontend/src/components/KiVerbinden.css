@@ -1,0 +1,90 @@
+/* KI verbinden: Pfade, JSON und Vorlagentext in Monospace, die auf schmalen Bildschirmen umbrechen.
+   Nur Variablen aus design.css. */
+
+.seite.ki-seite {
+  max-width: calc(var(--a6) * 20);
+}
+
+/* Abstand zwischen Karten kommt von .seite bzw. .stapel */
+.ki-seite .karte + .karte {
+  margin-top: 0;
+}
+
+/* Titel aufklappbarer Karten bleibt neben dem Pfeil */
+.ki-seite details.karte > summary > span {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.ki-eng {
+  gap: var(--a0) var(--a1);
+}
+
+.ki-einzug {
+  margin: 0;
+  padding-left: calc(var(--icon) + var(--a1));
+}
+
+.ki-angabe {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--a0);
+  min-width: 0;
+}
+
+/* Vorlagentext in Monospace */
+.ki-code {
+  font-family: var(--schrift-mono);
+  font-size: var(--groesse-klein);
+  overflow-wrap: anywhere;
+}
+
+.ki-pfad {
+  display: block;
+  max-width: 100%;
+}
+
+.ki-block {
+  max-height: calc(var(--a6) * 8);
+  overflow: auto;
+}
+
+.ki-umbruch {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.ki-liste {
+  margin: 0;
+  padding-left: var(--a3);
+}
+
+.ki-liste li + li {
+  margin-top: var(--a0);
+}
+
+.ki-frage {
+  flex: 1 1 calc(var(--a6) * 5);
+}
+
+.ki-treffer {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ki-treffer li {
+  padding: var(--a1) 0;
+  border-bottom: var(--rand-breite) solid var(--rand);
+}
+
+.ki-treffer p {
+  margin: var(--a0) 0 0;
+}
+
+.ki-seite textarea.ki-code {
+  min-height: calc(var(--a6) * 5);
+}

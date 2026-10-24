@@ -51,6 +51,13 @@ export class Tuwel {
     return daten?.courses || []
   }
 
+  /** Monatsansicht des Kalenders über alle Kurse (wie die TUWEL-Kalenderseite; Kurs 1 = ganze Seite). */
+  async kalenderMonat(jahr, monat) {
+    return this.ajax('core_calendar_get_calendar_monthly_view', {
+      year: jahr, month: monat, courseid: 1, categoryid: 0, includenavigation: false, mini: true, day: 1,
+    })
+  }
+
   async kursZustand(kursId) {
     return this.ajax('core_courseformat_get_state', { courseid: kursId })
   }

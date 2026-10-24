@@ -1,8 +1,21 @@
 import { useState } from 'react'
 import { api, filterParameter, MARKIERUNGEN, TYPEN } from '../api.js'
+import { Auswahl, Button, Eingabe, Icon, Kontrolle, kurzTitel, lvaName } from '../ui.jsx'
 
-function umschalten(liste, wert) {
-  return liste.includes(wert) ? liste.filter((x) => x !== wert) : [...liste, wert]
+// Leere Liste = alle sichtbar. „Keine“ braucht einen Wert, der nichts trifft.
+const KEINE_LVA = 0
+const KEIN_TYP = 'KEINE'
+
+function sichtbar(liste, wert) {
+  return liste.length === 0 || liste.includes(wert)
+}
+
+/** Ein Eintrag ein-/ausblenden; alle sichtbar wird wieder zur leeren Liste. */
+function umschalten(liste, wert, alle, keine) {
+  const aktuell = liste.length === 0 ? alle : liste.filter((x) => x !== keine)
+  const neu = aktuell.includes(wert) ? aktuell.filter((x) => x !== wert) : [...aktuell, wert]
+  if (neu.length === 0) return [keine]
+  return alle.every((x) => neu.includes(x)) ? [] : neu
 }
 
 function monatsGrenzen(monat) {
@@ -17,95 +30,157 @@ function aktuellerMonat() {
   return `${heute.getFullYear()}-${String(heute.getMonth() + 1).padStart(2, '0')}`
 }
 
+// Aufklappbare Gruppe mit Anzahl der gewählten Einträge im Kopf
+function Gruppe({ titel, zusatz, offen = true, children }) {
+  return (
+    <details className="filter-gruppe" open={offen}>
+      <summary>
+        <Icon name="auf" className="icon-auf" />
+        <span>{titel}</span>
+        {zusatz && <span className="leise klein">{zusatz}</span>}
+      </summary>
+      <div className="filter-gruppe-inhalt">{children}</div>
+    </details>
+  )
+}
+
+function AlleKeine({ onAlle, onKeine }) {
+  return (
+    <div className="knopf-gruppe">
+      <Button klein onClick={onAlle}>
+        alle
+      </Button>
+      <Button klein onClick={onKeine}>
+        keine
+      </Button>
+    </div>
+  )
+}
+
 export default function FilterLeiste({ lvas, filter, setFilter, zeitraum }) {
+  const [suche, setSuche] = useState('')
   const [exportZeitraum, setExportZeitraum] = useState('ansicht')
   const [monat, setMonat] = useState(aktuellerMonat)
 
   const setze = (feld, wert) => setFilter({ ...filter, [feld]: wert })
+  const lvaIds = lvas.map((l) => l.id)
+  const typen = TYPEN.map((t) => t.wert)
+  const gefunden = lvas.filter((l) => `${l.titel} ${l.kurzname || ''}`.toLowerCase().includes(suche.toLowerCase()))
+  const anzahl = (liste, alle) => (liste.length === 0 ? 'alle' : `${liste.filter((x) => alle.includes(x)).length} von ${alle.length}`)
 
   const grenzen = exportZeitraum === 'monat' ? monatsGrenzen(monat) : exportZeitraum === 'ansicht' ? zeitraum : null
   const exportParameter = filterParameter(filter, grenzen?.von, grenzen?.bis)
 
   return (
-    <aside className="filter">
-      <h3>LVAs</h3>
-      {lvas.length === 0 && <p className="hinweis">Noch keine LVAs – zuerst TISS importieren.</p>}
-      {lvas.map((lva) => (
-        <label key={lva.id} className="filter-lva">
-          <input
-            type="checkbox"
-            checked={filter.lvas.includes(lva.id)}
-            onChange={() => setze('lvas', umschalten(filter.lvas, lva.id))}
-          />
-          <span className="farbpunkt" style={{ background: lva.farbe }} />
-          <span title={lva.titel}>{lva.kurzname || lva.titel}</span>
-        </label>
-      ))}
-      {filter.lvas.length > 0 && (
-        <button className="klein" onClick={() => setze('lvas', [])}>
-          alle LVAs zeigen
-        </button>
-      )}
+    <div className="filter-leiste">
+      <Gruppe titel="LVAs" zusatz={anzahl(filter.lvas, lvaIds)}>
+        {lvas.length === 0 ? (
+          <p className="leise klein">Noch keine LVAs – zuerst TISS importieren.</p>
+        ) : (
+          <>
+            <div className="filter-suche">
+              <Icon name="suche" />
+              <Eingabe type="search" placeholder="LVA suchen" aria-label="LVA suchen" value={suche} onChange={(e) => setSuche(e.target.value)} />
+            </div>
+            <AlleKeine onAlle={() => setze('lvas', [])} onKeine={() => setze('lvas', [KEINE_LVA])} />
+            <div className="filter-liste">
+              {gefunden.map((lva) => (
+                <Kontrolle
+                  key={lva.id}
+                  title={lva.titel}
+                  checked={sichtbar(filter.lvas, lva.id)}
+                  onChange={() => setze('lvas', umschalten(filter.lvas, lva.id, lvaIds, KEINE_LVA))}
+                  label={
+                    <span className="filter-lva">
+                      <span className="farbpunkt" style={{ background: lva.farbe }} />
+                      <span className="abgeschnitten">{lvaName(lva)}</span>
+                    </span>
+                  }
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </Gruppe>
 
-      <h3>Typ</h3>
-      {TYPEN.map((t) => (
-        <label key={t.wert}>
-          <input
-            type="checkbox"
-            checked={filter.typen.includes(t.wert)}
-            onChange={() => setze('typen', umschalten(filter.typen, t.wert))}
-          />
-          {t.name}
-        </label>
-      ))}
+      <Gruppe titel="Typ" zusatz={anzahl(filter.typen, typen)}>
+        <AlleKeine onAlle={() => setze('typen', [])} onKeine={() => setze('typen', [KEIN_TYP])} />
+        <div className="filter-liste">
+          {TYPEN.map((t) => (
+            <Kontrolle
+              key={t.wert}
+              label={t.name}
+              checked={sichtbar(filter.typen, t.wert)}
+              onChange={() => setze('typen', umschalten(filter.typen, t.wert, typen, KEIN_TYP))}
+            />
+          ))}
+        </div>
+      </Gruppe>
 
-      <h3>Markierung</h3>
-      {MARKIERUNGEN.map((m) => (
-        <label key={m.wert}>
-          <input
-            type="checkbox"
-            checked={filter.markierungen.includes(m.wert)}
-            onChange={() => setze('markierungen', umschalten(filter.markierungen, m.wert))}
-          />
-          {m.symbol} {m.name}
-        </label>
-      ))}
+      <Gruppe titel="Markierung" zusatz={filter.markierungen.length ? `nur ${filter.markierungen.length}` : 'alle Termine'} offen={false}>
+        <p className="leise klein">Nur Termine mit einer dieser Markierungen zeigen:</p>
+        <div className="filter-liste">
+          {MARKIERUNGEN.map((m) => (
+            <Kontrolle
+              key={m.wert}
+              checked={filter.markierungen.includes(m.wert)}
+              onChange={() =>
+                setze(
+                  'markierungen',
+                  filter.markierungen.includes(m.wert) ? filter.markierungen.filter((x) => x !== m.wert) : [...filter.markierungen, m.wert],
+                )
+              }
+              label={
+                <span className="filter-lva">
+                  <Icon name={m.icon} />
+                  {m.name}
+                </span>
+              }
+            />
+          ))}
+        </div>
+      </Gruppe>
 
-      <h3>Arbeit</h3>
-      {[
-        ['mit', 'Termine und Arbeit'],
-        ['ohne', 'nur Termine'],
-        ['nur', 'nur Arbeit'],
-      ].map(([wert, name]) => (
-        <label key={wert}>
-          <input type="radio" name="arbeit" checked={filter.arbeit === wert} onChange={() => setze('arbeit', wert)} />
-          {name}
-        </label>
-      ))}
-      <label>
-        <input type="checkbox" checked={filter.vorschlaege} onChange={() => setze('vorschlaege', !filter.vorschlaege)} />
-        Vorschläge zeigen
-      </label>
+      <Gruppe titel="Arbeit" offen={false}>
+        <div className="filter-liste">
+          {[
+            ['mit', 'Termine und Arbeit'],
+            ['ohne', 'nur Termine'],
+            ['nur', 'nur Arbeit'],
+          ].map(([wert, name]) => (
+            <Kontrolle key={wert} typ="radio" name="arbeit" label={name} checked={filter.arbeit === wert} onChange={() => setze('arbeit', wert)} />
+          ))}
+          <Kontrolle label="Vorschläge zeigen" checked={filter.vorschlaege} onChange={() => setze('vorschlaege', !filter.vorschlaege)} />
+        </div>
+      </Gruppe>
 
-      <h3>Export</h3>
-      <select value={exportZeitraum} onChange={(e) => setExportZeitraum(e.target.value)}>
-        <option value="ansicht">aktuelle Ansicht</option>
-        <option value="monat">Monat</option>
-        <option value="alles">alles</option>
-      </select>
-      {exportZeitraum === 'monat' && <input type="month" value={monat} onChange={(e) => setMonat(e.target.value)} />}
-      <p className="hinweis">Es gelten die Filter oben.</p>
-      <div className="export-knoepfe">
-        {[
-          ['ics', 'iCal'],
-          ['csv', 'CSV'],
-          ['pdf', 'PDF'],
-        ].map(([format, name]) => (
-          <a key={format} className="knopf" href={api.exportUrl(format, exportParameter)} download>
-            {name}
-          </a>
-        ))}
-      </div>
-    </aside>
+      <Gruppe titel="Export" offen={false}>
+        <Auswahl
+          aria-label="Zeitraum des Exports"
+          value={exportZeitraum}
+          onChange={(e) => setExportZeitraum(e.target.value)}
+          optionen={[
+            { wert: 'ansicht', name: 'aktuelle Ansicht' },
+            { wert: 'monat', name: 'Monat' },
+            { wert: 'alles', name: 'alles' },
+          ]}
+        />
+        {exportZeitraum === 'monat' && (
+          <Eingabe type="month" aria-label="Monat" value={monat} onChange={(e) => setMonat(e.target.value)} />
+        )}
+        <p className="leise klein">Es gelten die Filter oben.</p>
+        <div className="knopf-gruppe">
+          {[
+            ['ics', 'iCal'],
+            ['csv', 'CSV'],
+            ['pdf', 'PDF'],
+          ].map(([format, name]) => (
+            <Button key={format} klein icon="laden" href={api.exportUrl(format, exportParameter)} download>
+              {name}
+            </Button>
+          ))}
+        </div>
+      </Gruppe>
+    </div>
   )
 }

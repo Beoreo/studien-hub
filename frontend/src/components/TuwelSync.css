@@ -1,0 +1,141 @@
+/* Reiter „TUWEL“: nur Variablen aus design.css */
+
+.tuwel details.karte > summary {
+  flex-wrap: wrap;
+}
+
+/* Titel bleibt neben dem Pfeil; die Zusatzangaben rutschen bei Platzmangel in die nächste Zeile */
+.tuwel details.karte > summary > span:not(.karte-summary-aktionen) {
+  flex: 1 1 calc(var(--a6) * 5);
+  min-width: 0;
+}
+
+.tuwel .karte-summary-aktionen {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1);
+  margin-left: auto;
+  font-weight: 400;
+}
+
+/* Lange Pfade, Schlüssel, Dateinamen und Abschnitte umbrechen statt die Seite zu verbreitern */
+.tuwel-pfad {
+  overflow-wrap: anywhere;
+}
+
+/* In Tabellen nur an Wortgrenzen umbrechen (mit Mindestbreite); breitere Tabellen scrollen in ihrer Hülle */
+.tuwel-umbruch,
+.tuwel-datei {
+  overflow-wrap: break-word;
+}
+
+.tabelle td.tuwel-umbruch {
+  min-width: calc(var(--a6) * 3);
+}
+
+.tuwel-pfad {
+  display: block;
+  margin: var(--a0) 0;
+  padding: var(--a0) var(--a1);
+  background: var(--flaeche);
+  border-radius: var(--radius);
+}
+
+p .tuwel-pfad {
+  display: inline;
+  padding: 0 var(--a0);
+}
+
+.tuwel-schritte {
+  margin: 0;
+  padding-left: var(--a3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2);
+}
+
+.tuwel-schritte .leise.klein {
+  display: block;
+}
+
+.tuwel-schluessel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1);
+  margin-top: var(--a1);
+}
+
+.tuwel-schluessel .eingabe {
+  flex: 1 1 calc(var(--a6) * 5);
+  width: auto;
+  min-width: 0;
+  font-family: var(--schrift-mono);
+  font-size: var(--groesse-klein);
+}
+
+.tuwel-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--a1) var(--a2);
+}
+
+.tuwel-kopf p {
+  margin: 0;
+}
+
+.tuwel-zuordnung {
+  min-width: calc(var(--a6) * 3);
+}
+
+/* Dateispalte: genug Breite, damit Namen nicht Buchstabe für Buchstabe umbrechen */
+.tuwel-datei {
+  min-width: calc(var(--a6) * 5);
+}
+
+.tuwel-datei .badge {
+  margin-right: var(--a0);
+}
+
+.tuwel-medien {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a0);
+  margin-left: var(--a1);
+}
+
+.tuwel-medien .icon {
+  width: var(--icon-klein);
+  height: var(--icon-klein);
+}
+
+/* Was der letzte Sync gebracht hat: Streifen am Zeilenanfang */
+.tabelle tr.tuwel-frisch td:first-child {
+  box-shadow: inset var(--streifen) 0 0 var(--primaer);
+}
+
+.tuwel-erschienen {
+  display: inline-flex;
+  flex-direction: column;
+  white-space: nowrap;
+}
+
+.tuwel-lernzeit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a0);
+  white-space: nowrap;
+}
+
+.tuwel-unterkopf {
+  display: flex;
+  align-items: center;
+  gap: var(--a1);
+}
+
+.tuwel .hinweis-details ul ul {
+  margin-top: var(--a0);
+}

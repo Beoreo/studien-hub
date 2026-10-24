@@ -4,8 +4,11 @@ import os
 
 os.environ["STUDIENHUB_DB_URL"] = "sqlite://"
 os.environ["STUDIENHUB_SCHEDULER"] = "0"
-# Tests dürfen nie in den echten Unterlagen-Ordner schreiben
+# Tests dürfen nie in den echten Daten- oder Unterlagen-Ordner schreiben …
+os.environ["STUDIENHUB_DATEN"] = __import__("tempfile").mkdtemp(prefix="studienhub-test-daten-")
 os.environ["STUDIENHUB_UNTERLAGEN"] = __import__("tempfile").mkdtemp(prefix="studienhub-test-")
+# … und nie an die echte Windows-Anmeldeinformationsverwaltung
+os.environ["STUDIENHUB_GEHEIMNISSE"] = "speicher"
 
 from pathlib import Path  # noqa: E402
 
@@ -21,6 +24,11 @@ BEISPIELE = Path(__file__).parent / "beispiele"
 def session():
     engine = init_db("sqlite://")
     with SessionLocal() as s:
+        # Standard der Tests: STEOP abgeschlossen, alle LVAs werden besucht (test_lva_auswahl prüft das Gegenteil)
+        from app.lva_auswahl import setze_steop_abgeschlossen
+
+        setze_steop_abgeschlossen(s, True)
+        s.commit()
         yield s
     Base.metadata.drop_all(engine)
 

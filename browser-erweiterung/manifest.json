@@ -1,21 +1,40 @@
 {
   "manifest_version": 3,
-  "name": "Studien-Hub TUWEL-Sync",
-  "version": "0.3.0",
-  "description": "Lädt deine TUWEL-Unterlagen mit deiner Browser-Anmeldung in den lokalen Studien-Hub.",
-  "permissions": ["storage", "alarms"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxq7zqIdBhu+ufkoR8geNTcFISUzaabwXbiG2SVCzKuEabKc0jrnRF+CglJvt5jJoA7KNTkCUot3AlbKNVWZg4XwiTtl32pNLL+qnfkvzCeCuAmeJRpbQVqKYcEmmCjjwk+mOQWQkaSLU1bUxqvNvvJG8+ex/ny7Nd480yJgMcZqH5o4PkURaFExWSrhIO+3J4BzjOdBc7y2W74mLjBiyukptIFFbIDJK4szpB31RBcEfG7tlMDLIyU899VdPUiafNO8RiSlX90JWvETpvZMT5cBH5WXriFi33zqBTwwsTyawLBniTq861t8ysgWx0AFW1H/uHp3fp4lm3OoebTv3RQIDAQAB",
+  "name": "Studien-Hub Sync (TUWEL und TISS)",
+  "version": "0.5.1",
+  "description": "Lädt deine TUWEL-Unterlagen, Prüfungstermine und deinen STEOP-Status aus TISS mit deiner Browser-Anmeldung in den lokalen Studien-Hub.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "cookies"
+  ],
   "host_permissions": [
     "https://tuwel.tuwien.ac.at/*",
+    "https://tiss.tuwien.ac.at/*",
     "http://127.0.0.1:8000/*",
     "http://localhost:8000/*"
   ],
   "background": {
     "service_worker": "background.js",
-    "scripts": ["background.js"],
+    "scripts": [
+      "background.js"
+    ],
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://tiss.tuwien.ac.at/*"
+      ],
+      "js": [
+        "tiss-inhalt.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
-    "default_title": "Studien-Hub TUWEL-Sync",
+    "default_title": "Studien-Hub Sync",
     "default_popup": "popup.html"
   },
   "browser_specific_settings": {

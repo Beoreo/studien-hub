@@ -1,8 +1,8 @@
-"""Lernblöcke: bald nach Erscheinen, vor Übungen/Abgaben, Konflikte statt stillem Kürzen."""
+"""Lernblöcke: Zeit aus dem Wochenbedarf, nahe Prüfung zuletzt kürzen, Stoff nur verteilen."""
 
 from datetime import date, datetime, time, timedelta
 
-from app.lernplanung import LernRegeln, LernStoff, plane_lernbloecke
+from app.lernplanung import LernBedarf, LernRegeln, LernStoff, LernVorschlag, plane_lernbloecke, stoff_zuteilen
 from app.planung import Arbeitsregeln, Intervall, PlanTermin, verteile_arbeitszeit
 
 MONTAG = date(2026, 10, 5)
@@ -21,91 +21,121 @@ def stoff(dok_id=1, lva=1, tag=0, stunde=9, minuten=90, titel="Folien"):
 REGELN = LernRegeln(fruehester_beginn=time(8), spaetestes_ende=time(20))
 
 
-def test_bald_nach_erscheinen_und_nie_davor():
-    plan = plane_lernbloecke(MONTAG, REGELN, [stoff(tag=1, stunde=13, minuten=90)], [])
-    assert len(plan.bloecke) == 1
-    block = plan.bloecke[0].intervall
-    assert block.start == dt(1, 13) and block.dauer == 90 * MIN  # direkt nach Erscheinen am Dienstag
-    assert plan.bloecke[0].zuteilung == {1: 90}
-    assert plan.offen == {}
+def minuten(plan, lva_id=None):
+    return plan.minuten(lva_id)
 
 
-def test_vor_der_uebung_und_um_sperren_herum():
-    # Stoff Montag 9 Uhr, Übung Dienstag 10 Uhr, Montag ganztägig Pflichttermine bis 18 Uhr
-    sperren = [Intervall(dt(0, 8), dt(0, 18))]
-    plan = plane_lernbloecke(MONTAG, REGELN, [stoff(minuten=120)], sperren, fristen={1: [dt(1, 10)]})
-    block = plan.bloecke[0].intervall
-    assert block.ende <= dt(1, 10) and not plan.bloecke[0].nach_frist
-    assert not block.ueberschneidet(sperren[0])
-    assert block.start >= dt(0, 18) or block.start.date() == dt(1, 8).date()
-    assert "vor der nächsten Übung/Abgabe" in plan.begruendungen[0]
-
-
-def test_nach_der_frist_nur_wenn_vorher_kein_platz():
-    sperren = [Intervall(dt(0, 8), dt(0, 20)), Intervall(dt(1, 8), dt(1, 10))]
-    plan = plane_lernbloecke(MONTAG, REGELN, [stoff(minuten=60)], sperren, fristen={1: [dt(1, 10)]})
-    assert plan.bloecke[0].nach_frist
-    assert "erst nach der Übung/Abgabe" in plan.begruendungen[0]
-
-
-def test_lange_unterlagen_werden_in_bloecke_geteilt_und_tagesgrenze_gilt():
-    regeln = LernRegeln(fruehester_beginn=time(8), spaetestes_ende=time(20), max_block=120 * MIN, max_tag=4 * H)
-    plan = plane_lernbloecke(MONTAG, regeln, [stoff(minuten=600)], [], grundlast={MONTAG: 2 * H})
+def test_plant_genau_den_wochenbedarf_verteilt_ueber_die_woche():
+    plan = plane_lernbloecke(MONTAG, REGELN, [LernBedarf(1, 360)], [])
+    assert minuten(plan) == 360 and plan.offen == {}
     assert all(b.intervall.dauer <= 120 * MIN for b in plan.bloecke)
-    assert sum(b.zuteilung[1] for b in plan.bloecke) == 600
-    montag = sum((b.intervall.dauer for b in plan.bloecke if b.intervall.start.date() == MONTAG), timedelta())
-    assert montag <= 2 * H  # 2 h Uni + höchstens 2 h Lernen
-    for a, b in zip(plan.bloecke, plan.bloecke[1:]):
-        assert b.intervall.start >= a.intervall.ende + timedelta(minutes=30) or b.intervall.start.date() != a.intervall.start.date()
+    tage = [b.intervall.start.date() for b in plan.bloecke]
+    assert len(tage) == len(set(tage))  # höchstens ein Block derselben LVA pro Tag
+    assert "Lernen LVA 1: 6,0 h in 3 Blöcken" in plan.begruendungen[0]
 
 
-def test_mindestlaenge_und_nur_erlaubte_tage():
+def test_sperren_tagesgrenze_und_freie_tage():
+    regeln = LernRegeln(fruehester_beginn=time(8), spaetestes_ende=time(20), max_tag=4 * H,
+                        freie_tage=frozenset({MONTAG + timedelta(days=1)}))
+    sperren = [Intervall(dt(0, 8), dt(0, 18))]
+    plan = plane_lernbloecke(MONTAG, regeln, [LernBedarf(1, 600)], sperren, grundlast={MONTAG: 3 * H})
+    for b in plan.bloecke:
+        assert not b.intervall.ueberschneidet(sperren[0])
+        assert b.intervall.start.date() != MONTAG + timedelta(days=1)  # gesperrter Tag
+        if b.intervall.start.date() == MONTAG:
+            assert b.intervall.dauer <= 1 * H  # 3 h Last + höchstens 1 h
+
+
+def test_mindestlaenge_nur_erlaubte_tage_und_kleine_reste():
     regeln = LernRegeln(tage=frozenset({2}), fruehester_beginn=time(8), spaetestes_ende=time(20))
-    plan = plane_lernbloecke(MONTAG, regeln, [stoff(minuten=10)], [])
-    assert plan.bloecke[0].intervall.start.weekday() == 2
-    assert plan.bloecke[0].intervall.dauer == 45 * MIN  # Mindestlänge
+    plan = plane_lernbloecke(MONTAG, regeln, [LernBedarf(1, 30)], [])
+    assert plan.bloecke[0].intervall.start.weekday() == 2 and plan.bloecke[0].intervall.dauer == 45 * MIN
+    # weniger als ein halber Mindestblock: kein Block, aber auch kein Konflikt (geht in den Rückstand)
+    assert plane_lernbloecke(MONTAG, regeln, [LernBedarf(1, 15)], []).bloecke == []
 
 
-def test_kein_platz_wird_als_offen_gemeldet():
-    regeln = LernRegeln(tage=frozenset({0}), fruehester_beginn=time(8), spaetestes_ende=time(12))
-    plan = plane_lernbloecke(MONTAG, regeln, [stoff(minuten=600, stunde=8)], [])
-    verplant = sum(b.zuteilung[1] for b in plan.bloecke)
-    assert verplant < 600 and plan.offen == {1: 600 - verplant}
+def test_ohne_nahe_pruefung_wird_zuerst_gekuerzt():
+    # Platz für 4 h: Mathe (Prüfung nahe) bekommt alles, Mechanik und GBUF teilen sich den Rest und werden gekürzt
+    regeln = LernRegeln(tage=frozenset({0, 1}), fruehester_beginn=time(8), spaetestes_ende=time(10))
+    bedarf = [LernBedarf(1, 120, prioritaet=1), LernBedarf(2, 120, prioritaet=0), LernBedarf(3, 120, prioritaet=1)]
+    plan = plane_lernbloecke(MONTAG, regeln, bedarf, [], lva_namen={1: "Mechanik", 2: "Mathe", 3: "GBUF"})
+    assert minuten(plan, 2) == 120 and 2 not in plan.offen
+    assert minuten(plan) == 240
+    assert plan.offen.get(1, 0) + plan.offen.get(3, 0) == 120
+    assert any("Lernen Mathe" in t and "Lernphase" in t for t in plan.begruendungen)
 
 
-def test_dringendste_lva_zuerst_und_mehrere_unterlagen_in_einem_block():
-    # 8:00–10:30: nach 1,5 h Algebra und 30 min Pause bleibt kein Mindestblock für Analysis
-    regeln = LernRegeln(tage=frozenset({0}), fruehester_beginn=time(8), spaetestes_ende=time(10, 30))
-    plan = plane_lernbloecke(
-        MONTAG, regeln,
-        [stoff(1, lva=1, stunde=8, minuten=60), stoff(2, lva=2, stunde=8, minuten=40), stoff(3, lva=2, stunde=8, minuten=50)],
-        [], fristen={2: [dt(0, 11)]}, lva_namen={1: "Analysis", 2: "Algebra"},
-    )
-    erster = plan.bloecke[0]
-    assert erster.lva_id == 2 and erster.intervall.start == dt(0, 8)  # Algebra hat die frühere Frist
-    assert erster.zuteilung == {2: 40, 3: 50} and erster.titel == ["Folien"]
-    assert 1 in plan.offen  # Analysis passt nicht mehr hinein
+def test_pruefungswoche_kein_lernblock_nach_der_pruefung():
+    pruefung = dt(2, 9)  # Mittwoch 9 Uhr
+    regeln = LernRegeln(fruehester_beginn=time(8), spaetestes_ende=time(20), max_tag=2 * H)
+    plan = plane_lernbloecke(MONTAG, regeln, [LernBedarf(1, 480, prioritaet=0, pruefung=pruefung)], [])
+    assert plan.bloecke and all(b.intervall.ende <= pruefung for b in plan.bloecke)
+    # Mo und Di je 2 h, Mi bis 9 Uhr 1 h – danach bringt Lernen für diese Prüfung nichts mehr
+    assert minuten(plan) == 300 and plan.offen == {1: 180}
 
 
-def test_stoff_aus_spaeteren_wochen_wird_ignoriert():
-    plan = plane_lernbloecke(MONTAG, REGELN, [stoff(tag=8)], [])
-    assert plan.bloecke == [] and plan.offen == {}
+def test_vor_der_naechsten_uebung_bevorzugt():
+    plan = plane_lernbloecke(MONTAG, REGELN, [LernBedarf(1, 90)], [], fristen={1: [dt(1, 10)]})
+    assert plan.bloecke[0].intervall.ende <= dt(1, 10) and not plan.bloecke[0].nach_frist
 
 
-# --- Arbeitsplaner mit Lernblöcken ------------------------------------------------------------
+def test_kein_bedarf_kein_block():
+    assert plane_lernbloecke(MONTAG, REGELN, [LernBedarf(1, 0)], []).bloecke == []
 
-def test_arbeit_meidet_lernbloecke_und_rechnet_sie_zur_tageslast():
+
+# --- Stoff zuteilen ----------------------------------------------------------------------------
+
+def block(lva, tag, stunden):
+    return LernVorschlag(lva, Intervall(dt(tag, 10), dt(tag, 10 + stunden)))
+
+
+def test_viel_alter_stoff_wird_ueber_die_wochen_verteilt():
+    # 40 alte Unterlagen à 60 min Stoff, 10 Wochen bis zur Lernphase: diese Woche ist ein Zehntel dran
+    alt = [stoff(i, tag=-30 + i // 2, minuten=60, titel=f"VO {i}") for i in range(40)]
+    bloecke = [block(1, 0, 2), block(1, 2, 1)]
+    stoff_zuteilen(bloecke, alt, {1: 0.1})
+    abgedeckt = sum(sum(b.zuteilung.values()) for b in bloecke)
+    assert abgedeckt == 240  # 2400 × 0,1 – nicht der ganze Rückstand
+    assert sum(bloecke[0].zuteilung.values()) == 160  # im Verhältnis der Blocklängen
+    assert bloecke[0].titel[0] == "VO 0"  # älteste Unterlagen zuerst
+    assert set(bloecke[0].zuteilung).isdisjoint(set(bloecke[1].zuteilung) - {max(bloecke[0].zuteilung)})
+
+
+def test_ohne_offenen_stoff_wiederholung_oder_pruefungsvorbereitung():
+    bloecke = [block(1, 0, 1), block(2, 1, 1)]
+    stoff_zuteilen(bloecke, [], {1: 0.5, 2: 1.0}, lernphase=frozenset({2}))
+    assert bloecke[0].titel == ["Wiederholung und Übungen"] and bloecke[1].titel == ["Prüfungsvorbereitung"]
+    assert bloecke[0].zuteilung == {}
+
+
+def test_stoff_erst_nach_seinem_erscheinen():
+    bloecke = [block(1, 0, 1)]
+    stoff_zuteilen(bloecke, [stoff(1, tag=3, minuten=60)], {1: 1.0})
+    assert bloecke[0].zuteilung == {}  # Unterlage erscheint erst am Donnerstag
+
+
+# --- Arbeitsplaner mit belegten und gesperrten Zeiten ---------------------------------------------
+
+def test_arbeit_meidet_belegte_zeiten_und_rechnet_sie_zur_tageslast():
     regeln = Arbeitsregeln(stunden_pro_woche=16, fruehester_beginn=time(8), spaetestes_ende=time(20),
                            max_block=8 * H, max_tag=9 * H)
-    lernen = [Intervall(dt(t, 8), dt(t, 12)) for t in range(5)]  # jeden Werktag 4 h Lernen
+    lernen = [Intervall(dt(t, 8), dt(t, 12)) for t in range(5)]  # bestätigte Lernblöcke
     v = verteile_arbeitszeit(MONTAG, regeln, [], [], lernen)
     assert v.verplant == 16 * H
     for b in v.bloecke:
         assert not any(b.intervall.ueberschneidet(l.erweitert(timedelta(minutes=29))) for l in lernen)
         tag = b.intervall.start.date()
         arbeit = sum((x.intervall.dauer for x in v.bloecke if x.intervall.start.date() == tag), timedelta())
-        assert arbeit + 4 * H <= 9 * H  # Tagesgrenze inklusive Lernen
-    assert v.soll == 16 * H  # Lernzeit zählt nicht zu den Arbeitsstunden
+        assert arbeit + 4 * H <= 9 * H
+    assert v.soll == 16 * H
+
+
+def test_gesperrte_zeiten_ohne_tageslast():
+    regeln = Arbeitsregeln(stunden_pro_woche=8, tage=frozenset({0}), fruehester_beginn=time(8), spaetestes_ende=time(20),
+                           max_block=8 * H, max_tag=9 * H)
+    verworfen = [Intervall(dt(0, 8), dt(0, 12))]
+    v = verteile_arbeitszeit(MONTAG, regeln, [], [], gesperrte_zeiten=verworfen)
+    assert v.verplant == 8 * H and all(b.intervall.start >= dt(0, 12) for b in v.bloecke)
 
 
 def test_ohne_lernbloecke_unveraendert():

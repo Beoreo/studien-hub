@@ -1,20 +1,22 @@
-"""Lernaufwand je Unterlage, Lernbedarf je Woche und LVA, Abgleich mit den ECTS.
+"""Lernbedarf je LVA und Woche (aus den ECTS) und der Stoff, den die Unterlagen liefern.
 
-Schätzung (Werte pro LVA einstellbar, Standard in models.STANDARD_LERNPARAMETER):
+Wie viel Zeit eine LVA pro Woche bekommt, rechnet lernbedarf.py aus den ECTS. Die Unterlagen bestimmen
+nur, welcher Stoff in einem Lernblock dran ist. Damit große und kleine Unterlagen einer LVA sinnvoll
+verteilt werden, bekommt jede Unterlage eine geschätzte Stoffmenge (Gewicht, Werte je LVA einstellbar,
+Standard in models.STANDARD_LERNPARAMETER):
 - Folien:      Seitenzahl × Minuten pro Folie (PDF im Querformat, PowerPoint/Impress)
 - Skripte:     Seitenzahl × Minuten pro Seite (PDF im Hochformat, Word/Writer)
-- Übungsblätter: fester Wert (erkannt am Namen der Datei, Aktivität oder des Abschnitts)
+- Übungsblätter: fester Wert (erkannt am Namen der Datei oder der Aktivität)
 - Videos:      Dauer × Faktor
 - Sonstiges:   fester Wert
-Jede Schätzung wird mit dem Korrekturfaktor der LVA multipliziert, der aus den selbst
-eingetragenen tatsächlichen Zeiten der Lernblöcke gelernt wird.
+`Dokument.lern_minuten` überschreibt die Schätzung (0 = nicht lernen).
 """
 
 from __future__ import annotations
 
 import re
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
@@ -22,27 +24,38 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import UNTERLAGEN_ORDNER
+from .feiertage import gesperrte_tage
+from .lernbedarf import (
+    STANDARD_ECTS_FAKTOR,
+    STANDARD_LERNPHASE_WOCHEN,
+    BedarfWoche,
+    LvaPlanDaten,
+    bedarf_fuer_woche,
+    gesamtbedarf_minuten,
+    montag,
+    wochen_von_bis,
+    wochengewichte,
+)
 from .models import (
     LERN_VORSCHLAG,
     STANDARD_LERNPARAMETER,
+    TYP_ABGABE,
     TYP_PRUEFUNG,
+    Arbeitsregel,
     Dokument,
     Lernblock,
     Lva,
     Termin,
 )
-from .planung import wochenbeginn
+from .pruefungen import ist_angemeldet, termine_der_lva
 
 UEBUNG = re.compile(
     r"übung|uebung|\bblatt\b|blatt\s*\d|aufgabe|angabe|exercise|assignment|homework|hausübung|hausaufgabe|"
     r"tutorium|worksheet",
     re.IGNORECASE,
 )
-STUNDEN_PRO_ECTS = 25
-STANDARD_SEMESTERWOCHEN = 15
 VIDEO_OHNE_DAUER_MINUTEN = 90  # Annahme, wenn die Dauer einer Aufzeichnung unbekannt ist
-RUECKSTAND_WOCHEN = 2  # so weit zurück wird noch nicht abgedeckter Stoff eingeplant
-KALIBRIER_GEWICHT = 120  # Minuten „Vorwissen“: die ersten Rückmeldungen ändern die Schätzung behutsam
+STANDARD_LERNTAGE = [0, 1, 2, 3, 4, 5]
 
 
 # --- Seiten zählen und Art bestimmen -------------------------------------------------------
@@ -109,14 +122,14 @@ def dokument_aufbereiten(doc: Dokument) -> None:
     doc.lernart = bestimme_lernart(doc, quer)
 
 
-# --- Schätzung ------------------------------------------------------------------------------
+# --- Stoffmenge je Unterlage ---------------------------------------------------------------------
 
 def lernparameter(lva: Lva) -> dict[str, float]:
     return {**STANDARD_LERNPARAMETER, **(lva.lernparameter or {})}
 
 
 def grundaufwand_minuten(doc: Dokument, parameter: dict[str, float]) -> float:
-    """Geschätzte Lernzeit ohne Korrektur."""
+    """Geschätzte Stoffmenge einer Unterlage in Minuten."""
     art = doc.lernart
     if art == "video":
         dauer = doc.dauer_sekunden / 60 if doc.dauer_sekunden else VIDEO_OHNE_DAUER_MINUTEN
@@ -130,53 +143,25 @@ def grundaufwand_minuten(doc: Dokument, parameter: dict[str, float]) -> float:
     return parameter["minuten_sonstiges"]
 
 
-@dataclass
-class Korrektur:
-    faktor: float
-    rueckmeldungen: int
-
-
-def korrekturfaktor(session: Session, lva_id: int) -> Korrektur:
-    """Verhältnis tatsächlicher zu geplanter Lernzeit, mit Vorwissen geglättet."""
-    bloecke = session.scalars(
-        select(Lernblock).where(Lernblock.lva_id == lva_id, Lernblock.tatsaechliche_minuten.is_not(None))
-    ).all()
-    geplant = sum(b.geplante_minuten for b in bloecke)
-    tatsaechlich = sum(b.tatsaechliche_minuten for b in bloecke)
-    faktor = (tatsaechlich + KALIBRIER_GEWICHT) / (geplant + KALIBRIER_GEWICHT)
-    return Korrektur(round(min(max(faktor, 0.25), 4.0), 2), len(bloecke))
-
-
-def aufwand_minuten(doc: Dokument, lva: Lva, korrektur: Korrektur) -> int:
-    """Geschätzte Lernzeit inklusive Korrektur; eine selbst eingetragene Zeit gilt unverändert."""
+def stoff_minuten(doc: Dokument, lva: Lva) -> int:
+    """Stoffmenge einer Unterlage; eine selbst eingetragene Zeit gilt unverändert (0 = nicht lernen)."""
     if doc.lern_minuten is not None:
         return doc.lern_minuten
     dokument_aufbereiten(doc)
-    return round(grundaufwand_minuten(doc, lernparameter(lva)) * korrektur.faktor)
+    return round(grundaufwand_minuten(doc, lernparameter(lva)))
 
 
 def erscheinungszeit(doc: Dokument) -> datetime:
     return doc.erschienen_am or doc.erstellt_am
 
 
-# --- Lernbedarf je Woche ----------------------------------------------------------------------
-
 def _wochengrenzen(woche: date) -> tuple[datetime, datetime]:
-    start = datetime.combine(wochenbeginn(woche), time())
+    start = datetime.combine(montag(woche), time())
     return start, start + timedelta(days=7)
 
 
-def semesterwochen(session: Session, lva: Lva) -> int:
-    """Wochen zwischen erstem und letztem Termin der LVA (ohne Prüfungen)."""
-    termine = session.scalars(select(Termin.start).where(Termin.lva_id == lva.id, Termin.typ != TYP_PRUEFUNG)).all()
-    if not termine:
-        return STANDARD_SEMESTERWOCHEN
-    erste, letzte = wochenbeginn(min(termine).date()), wochenbeginn(max(termine).date())
-    return max(1, (letzte - erste).days // 7 + 1)
-
-
 def abgedeckte_minuten(session: Session, ausser_woche: tuple[datetime, datetime] | None = None) -> dict[int, int]:
-    """Minuten je Dokument, die schon Lernblöcke abdecken (Vorschläge der neu geplanten Woche ausgenommen)."""
+    """Stoffmenge je Dokument, die schon Lernblöcke abdecken (Vorschläge der neu geplanten Woche ausgenommen)."""
     abgedeckt: dict[int, int] = {}
     for block in session.scalars(select(Lernblock)):
         if ausser_woche and block.status == LERN_VORSCHLAG and ausser_woche[0] <= block.start < ausser_woche[1]:
@@ -192,76 +177,150 @@ class OffeneUnterlage:
     lva_id: int
     titel: str
     erschienen: datetime
-    minuten: int  # noch nicht durch Lernblöcke abgedeckt
+    minuten: int  # noch nicht abgedeckte Stoffmenge
 
 
 def offene_unterlagen(session: Session, woche: date) -> list[OffeneUnterlage]:
-    """Stoff, der in dieser Woche oder bis zu zwei Wochen davor erschienen und noch nicht eingeplant ist."""
+    """Aller Stoff, der bis zum Ende der Woche erschienen und noch nicht abgedeckt ist – egal wie alt."""
     von, bis = _wochengrenzen(woche)
-    ab = von - timedelta(weeks=RUECKSTAND_WOCHEN)
     abgedeckt = abgedeckte_minuten(session, (von, bis))
-    korrekturen: dict[int, Korrektur] = {}
     offen = []
-    for doc in session.scalars(select(Dokument)):
+    for doc in session.scalars(select(Dokument).where(Dokument.quelle.is_not("mbcloud"))):  # MB Cloud: nur Altprüfungen
         zeit = erscheinungszeit(doc)
-        if not (ab <= zeit < bis):
+        if zeit >= bis:
             continue
-        korrektur = korrekturen.setdefault(doc.lva_id, korrekturfaktor(session, doc.lva_id))
-        rest = aufwand_minuten(doc, doc.lva, korrektur) - abgedeckt.get(doc.id, 0)
+        rest = stoff_minuten(doc, doc.lva) - abgedeckt.get(doc.id, 0)
         if rest > 0:
             offen.append(OffeneUnterlage(doc.id, doc.lva_id, doc.dateiname, max(zeit, von), rest))
     session.flush()
     return sorted(offen, key=lambda o: (o.erschienen, o.dokument_id))
 
 
-@dataclass
-class Wochenbedarf:
-    lva_id: int
-    lva_name: str
-    unterlagen_minuten: int = 0  # neuer Stoff dieser Woche (geschätzt, korrigiert)
-    praesenz_minuten: int = 0  # Termine der LVA in dieser Woche
-    soll_minuten: int | None = None  # aus ECTS
-    korrektur: float = 1.0
-    unterlagen: list[dict] = field(default_factory=list)
-    warnung: str | None = None
+# --- Prüfungen ---------------------------------------------------------------------------------
 
-    @property
-    def gesamt_minuten(self) -> int:
-        return self.unterlagen_minuten + self.praesenz_minuten
+def pruefungstermine(session: Session, lva: Lva, heute: date | None = None) -> list[tuple[datetime, str]]:
+    """Prüfungen, zu denen man antritt, als (Zeitpunkt, Quelle), sortiert: Prüfungen aus dem TISS-Feed („tiss“, dort
+    stehen nur angemeldete) und die angemeldeten Prüfungstermine (Quelle des Termins: tiss, tuwel, manuell); ein
+    Termin am Tag einer Feed-Prüfung zählt nicht doppelt. Ist nichts angemeldet, gilt der nächste angebotene Termin
+    als „vorschlag“, damit der Lernbedarf trotzdem ein Ziel hat."""
+    aus_feed = list(session.scalars(
+        select(Termin.start).where(Termin.lva_id == lva.id, Termin.typ == TYP_PRUEFUNG).order_by(Termin.start)
+    ))
+    feed_tage = {z.date() for z in aus_feed}
+    termine = termine_der_lva(session, lva.id)
+    angemeldet = [(t.start, t.quelle) for t in termine if ist_angemeldet(t, feed_tage) and t.start.date() not in feed_tage]
+    ergebnis = sorted([(z, "tiss") for z in aus_feed] + angemeldet)
+    if ergebnis:
+        return ergebnis
+    heute = heute or date.today()
+    naechster = next((t for t in termine if t.start.date() >= heute and t.angemeldet is not False), None)
+    return [(naechster.start, "vorschlag")] if naechster else []
 
 
-def wochenbedarf(session: Session, woche: date, warnschwelle: float = 0.5) -> list[Wochenbedarf]:
-    """Lernbedarf je LVA für eine Woche und Abgleich mit dem ECTS-Soll."""
-    von, bis = _wochengrenzen(woche)
-    ergebnis: dict[int, Wochenbedarf] = {}
+def pruefungen(session: Session, lva: Lva) -> tuple[datetime, ...]:
+    """Zeitpunkte aller Prüfungen der LVA (TISS und selbst eingetragen), sortiert."""
+    return tuple(z for z, _ in pruefungstermine(session, lva))
 
-    def eintrag(lva: Lva) -> Wochenbedarf:
-        if lva.id not in ergebnis:
-            ergebnis[lva.id] = Wochenbedarf(lva.id, lva.kurzname or lva.titel, korrektur=korrekturfaktor(session, lva.id).faktor)
-        return ergebnis[lva.id]
 
-    for doc in session.scalars(select(Dokument)):
-        if not (von <= erscheinungszeit(doc) < bis):
+# --- Lernbedarf je Woche ------------------------------------------------------------------------
+
+def gelernte_minuten(block: Lernblock) -> int:
+    """Eingetragene tatsächliche Zeit, sonst die geplante."""
+    return block.tatsaechliche_minuten if block.tatsaechliche_minuten is not None else block.geplante_minuten
+
+
+def lerntage_verfuegbar(regel: Arbeitsregel | None, von: date, bis: date, session: Session) -> dict[date, float]:
+    """Je Woche der Anteil der Lerntage, die nicht gesperrt sind (Feiertage, Ferien, eigene freie Tage)."""
+    lerntage = set(regel.lern_tage if regel and regel.lern_tage is not None else STANDARD_LERNTAGE) or set(range(7))
+    gesperrt = gesperrte_tage(regel.freie_tage or [] if regel else [], montag(von), montag(bis) + timedelta(days=6), session)
+    anteile = {}
+    for w in wochen_von_bis(von, bis):
+        tage = [w + timedelta(days=i) for i in range(7) if i in lerntage]
+        anteile[w] = sum(1 for t in tage if t not in gesperrt) / len(tage)
+    return anteile
+
+
+def lva_plandaten(session: Session, lva: Lva, woche: date) -> LvaPlanDaten | None:
+    """Alles, was lernbedarf.py über die LVA braucht; None ohne Termine und Prüfung."""
+    termine = session.execute(
+        select(Termin.start, Termin.ende, Termin.typ).where(Termin.lva_id == lva.id)
+    ).all()
+    unterricht = [(s, e) for s, e, typ in termine if typ not in (TYP_PRUEFUNG, TYP_ABGABE)]
+    zeitpunkte = pruefungen(session, lva)
+    if not unterricht and not zeitpunkte:
+        return None
+    alle = [s for s, _ in unterricht] + list(zeitpunkte)
+    erste = montag(min(alle).date())
+    letzte = montag(max(s for s, _ in unterricht).date()) if unterricht else montag(max(zeitpunkte).date())
+
+    von, _ = _wochengrenzen(woche)
+    bloecke = list(session.scalars(select(Lernblock).where(Lernblock.lva_id == lva.id)))
+    erste_planwoche = montag(min(b.start for b in bloecke).date()) if bloecke else None
+    gelernt = sum(gelernte_minuten(b) for b in bloecke if b.start < von)
+    je_woche: dict[date, int] = {}
+    for b in bloecke:
+        if b.start < von:
+            w = montag(b.start.date())
+            je_woche[w] = je_woche.get(w, 0) + gelernte_minuten(b)
+    return LvaPlanDaten(
+        lva_id=lva.id,
+        name=lva.anzeigename,
+        ects=lva.ects,
+        praesenz_minuten=int(sum((e - s).total_seconds() for s, e in unterricht) // 60),
+        erste_woche=erste,
+        letzte_woche=letzte,
+        pruefungen=tuple(sorted(z.date() for z in zeitpunkte)),
+        ziel=lva.ziel or "normal",
+        anpassung=1.0 if lva.bedarf_faktor is None else lva.bedarf_faktor,
+        erste_planwoche=erste_planwoche,
+        gelernt_vorher=gelernt,
+        lernwochen=lva.lernwochen,
+        gelernt_je_woche=je_woche,
+    )
+
+
+def _regelwerte(regel: Arbeitsregel | None) -> tuple[float, int]:
+    ects_faktor = regel.ects_faktor if regel and regel.ects_faktor is not None else STANDARD_ECTS_FAKTOR
+    lernphase = regel.lernphase_wochen if regel and regel.lernphase_wochen is not None else STANDARD_LERNPHASE_WOCHEN
+    return ects_faktor, lernphase
+
+
+def bedarf_einer_lva(session: Session, lva: Lva, woche: date, regel: Arbeitsregel | None) -> tuple[BedarfWoche, LvaPlanDaten] | None:
+    daten = lva_plandaten(session, lva, woche)
+    if daten is None:
+        return None
+    ects_faktor, lernphase = _regelwerte(regel)
+    verfuegbar = lerntage_verfuegbar(regel, daten.erste_woche, daten.ende_woche, session)
+    return bedarf_fuer_woche(daten, woche, ects_faktor, lernphase, verfuegbar), daten
+
+
+def wochenbedarf(session: Session, woche: date, regel: Arbeitsregel | None = None) -> list[tuple[BedarfWoche, LvaPlanDaten]]:
+    """Lernbedarf aller LVAs, die in dieser Woche laufen oder noch eine Prüfung vor sich haben."""
+    from .lva_auswahl import besuchte_lva_ids
+
+    ergebnis = []
+    for lva in session.scalars(select(Lva).where(Lva.id.in_(besuchte_lva_ids(session)))):  # ausgeblendete: kein Bedarf
+        eintrag = bedarf_einer_lva(session, lva, woche, regel)
+        if eintrag is None:
             continue
-        b = eintrag(doc.lva)
-        minuten = aufwand_minuten(doc, doc.lva, Korrektur(b.korrektur, 0))
-        b.unterlagen_minuten += minuten
-        b.unterlagen.append({"id": doc.id, "titel": doc.dateiname, "lernart": doc.lernart, "seiten": doc.seiten, "minuten": minuten})
-    for termin in session.scalars(select(Termin).where(Termin.start >= von, Termin.start < bis)):
-        eintrag(termin.lva).praesenz_minuten += int((termin.ende - termin.start).total_seconds() // 60)
-    session.flush()
+        bedarf, _ = eintrag
+        if bedarf.lernphase:  # nur in den Lernfenstern vor Prüfungen
+            ergebnis.append(eintrag)
+    return sorted(ergebnis, key=lambda e: e[0].lva_name)
 
-    for b in ergebnis.values():
-        lva = session.get(Lva, b.lva_id)
-        if not lva.ects:
-            continue
-        b.soll_minuten = round(lva.ects * STUNDEN_PRO_ECTS * 60 / semesterwochen(session, lva))
-        if b.soll_minuten and abs(b.gesamt_minuten - b.soll_minuten) > warnschwelle * b.soll_minuten:
-            richtung = "über" if b.gesamt_minuten > b.soll_minuten else "unter"
-            b.warnung = (f"{b.lva_name}: {stunden(b.gesamt_minuten)} diese Woche liegt deutlich {richtung} "
-                         f"dem ECTS-Soll von {stunden(b.soll_minuten)} ({str(lva.ects).replace('.', ',').removesuffix(',0')} ECTS)")
-    return sorted(ergebnis.values(), key=lambda b: b.lva_name)
+
+def typischer_wochenbedarf(session: Session, lva: Lva, regel: Arbeitsregel | None) -> tuple[int, int]:
+    """(Gesamtbedarf, Bedarf einer Woche im Lernfenster vor einer Prüfung) in Minuten – für die LVA-Liste."""
+    daten = lva_plandaten(session, lva, date.today())
+    if daten is None:
+        return 0, 0
+    ects_faktor, lernphase = _regelwerte(regel)
+    gesamt = gesamtbedarf_minuten(daten.ects, daten.praesenz_minuten, ects_faktor, daten.ziel, daten.anpassung)
+    gewichte = wochengewichte(daten, lernphase, lerntage_verfuegbar(regel, daten.erste_woche, daten.ende_woche, session))
+    summe = sum(gewichte.values())
+    return gesamt, round(gesamt / summe) if summe else 0
 
 
 def stunden(minuten: int | float) -> str:
     return f"{minuten / 60:.1f}".replace(".", ",") + " h"
+

@@ -10,5 +10,13 @@ fpdf2>=2.7.9
 tzdata>=2024.1
 pytest>=8.0
 holidays>=0.50
-python-dotenv>=1.0
+# Betrieb: Zugangsdaten in der Windows-Anmeldeinformationsverwaltung, Symbol im Infobereich
+keyring>=25.5,<26
+pystray>=0.19.5
+pillow>=10
 pymupdf>=1.24
+# Stufe 3/4: Suche, Embeddings, Transkription, MCP-Server
+sqlite-vec>=0.1.6
+fastembed>=0.4
+faster-whisper>=1.0
+mcp>=2.3,<3

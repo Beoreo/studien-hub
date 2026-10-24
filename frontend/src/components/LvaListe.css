@@ -1,0 +1,201 @@
+/* Reiter „LVAs“: nur Seitenaufbau, sonst die Bausteine aus design.css */
+
+.lva-seite p {
+  margin: 0;
+}
+
+/* Semester-Karte: Anzahl im Kopf rechts, Unterkarten ohne zusätzlichen Abstand */
+.lva-semester > summary .karte-summary-aktionen {
+  margin-left: auto;
+  font-weight: 400;
+}
+
+.lva-semester .stapel > .karte + .karte {
+  margin-top: 0;
+}
+
+/* LVA-Tabelle: LVA-Zeile mit Teilen darunter als Gruppe */
+.lva-tabelle .lva-zeile td {
+  vertical-align: top;
+  border-bottom: none;
+  padding-top: var(--a2);
+}
+
+.lva-tabelle .teil-zeile td {
+  border-bottom: none;
+  padding-top: var(--a0);
+  padding-bottom: var(--a0);
+}
+
+.lva-tabelle .teil-zeile:has(+ .lva-zeile) td,
+.lva-tabelle .teil-zeile:last-child td {
+  border-bottom: var(--rand-breite) solid var(--rand);
+  padding-bottom: var(--a2);
+}
+
+.lva-name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a1);
+  min-width: calc(var(--a4) * 8);
+}
+
+.lva-tabelle tr.gedimmt .lva-name strong {
+  font-weight: 500;
+}
+
+.lva-einstellungen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1) var(--a3);
+}
+
+.lva-kurzname {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1);
+}
+
+.lva-besuchen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1);
+}
+
+.teil-name {
+  padding-left: var(--a3) !important;
+}
+
+/* Farbe als kleines Farbfeld */
+.lva-farbe {
+  width: var(--steuer-klein);
+  height: var(--steuer-klein);
+  padding: 0;
+  border: var(--rand-breite) solid var(--rand-feld);
+  border-radius: var(--radius);
+  background: none;
+  cursor: pointer;
+}
+
+.lva-farbe::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.lva-farbe::-webkit-color-swatch {
+  border: none;
+  border-radius: var(--radius);
+}
+
+.lva-streifen {
+  display: block;
+  width: var(--streifen);
+  height: var(--steuer-klein);
+  margin: 0 auto;
+  border-radius: var(--radius);
+}
+
+.lva-haken {
+  width: var(--icon);
+  height: var(--icon);
+  margin: 0;
+  vertical-align: middle;
+}
+
+.lva-tabelle tr.gedimmt .lva-streifen,
+.lva-tabelle tr.gedimmt .lva-farbe {
+  opacity: 0.5;
+}
+
+/* STEOP */
+.steop-variante {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a0);
+  min-width: 0;
+  padding-bottom: var(--a0);
+}
+
+.kriterien-baum {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--a1);
+}
+
+.kriterien-baum .kriterien-baum {
+  margin-top: var(--a1);
+  margin-left: var(--a1);
+  padding-left: var(--a2);
+  border-left: var(--rand-breite) solid var(--rand);
+  gap: var(--a0);
+}
+
+.kriterium {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1);
+}
+
+.kriterium-lva {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a0) var(--a1);
+}
+
+.kriterium-erledigt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a1);
+  min-height: var(--steuer-klein);
+}
+
+.kriterium-erledigt .icon {
+  color: var(--bestaetigen);
+}
+
+.kriterium-lva .kontrolle input:disabled + span {
+  color: var(--text-leise);
+}
+
+/* Lernbedarf */
+.lva-pruefung {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a1);
+  white-space: nowrap;
+}
+
+.lva-regler {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a1);
+  white-space: nowrap;
+}
+
+.lva-regler input {
+  width: calc(var(--a4) * 4);
+}
+
+/* schmal: verschachtelte Karten mit weniger Rand, damit Platz für den Inhalt bleibt */
+@media (max-width: 640px) {
+  .lva-seite .karte .karte {
+    padding: var(--a1);
+  }
+
+  .lva-name {
+    min-width: calc(var(--a4) * 6);
+  }
+}
+
+.lva-regler-wert {
+  min-width: var(--a6);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

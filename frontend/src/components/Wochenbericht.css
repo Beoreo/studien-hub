@@ -1,0 +1,129 @@
+/* Wochenbericht: Liste der Berichte links, Inhalt rechts; Markdown gut lesbar. Nur Variablen aus design.css. */
+
+.bericht-aufbau {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--a3);
+  align-items: start;
+}
+
+.bericht-liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a0);
+}
+
+.bericht-eintrag {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--a0);
+  padding: var(--a1) var(--a2);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  cursor: pointer;
+}
+
+.bericht-eintrag:hover {
+  background: var(--flaeche);
+}
+
+.bericht-eintrag.aktiv {
+  background: var(--primaer-toenung);
+  border-left-color: var(--primaer);
+  color: var(--primaer);
+  font-weight: 600;
+}
+
+.bericht-eintrag.aktiv .leise {
+  font-weight: 400;
+}
+
+.bericht-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1) var(--a2);
+  margin-bottom: var(--a2);
+}
+
+/* --- Markdown --------------------------------------------------------------------------------- */
+
+.markdown {
+  max-width: 72ch;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5 {
+  font-size: var(--groesse);
+  font-weight: 600;
+  margin: var(--a3) 0 var(--a1);
+}
+
+.markdown h2 {
+  padding-bottom: var(--a0);
+  border-bottom: var(--rand-breite) solid var(--rand);
+}
+
+.markdown h4,
+.markdown h5 {
+  margin-top: var(--a2);
+}
+
+.markdown p {
+  margin: 0 0 var(--a1);
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0 0 var(--a2);
+  padding-left: var(--a3);
+}
+
+.markdown li + li {
+  margin-top: var(--a0);
+}
+
+.markdown .tabelle-huelle {
+  margin-bottom: var(--a2);
+}
+
+.markdown code {
+  padding: 0 var(--a0);
+  background: var(--flaeche-stark);
+  border-radius: var(--radius);
+}
+
+@media (max-width: 900px) {
+  .bericht-aufbau {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--a2);
+  }
+
+  .bericht-liste {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .bericht-eintrag {
+    flex: none;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .bericht-eintrag.aktiv {
+    border-bottom-color: var(--primaer);
+  }
+}

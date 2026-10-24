@@ -1,0 +1,33 @@
+/* TISS-Import: schmale Spalte, nur Variablen aus design.css */
+
+.seite.tiss-import {
+  max-width: calc(var(--a6) * 16);
+}
+
+/* Abstand zwischen Karten kommt vom Stapel */
+.tiss-import .stapel > .karte + .karte {
+  margin-top: 0;
+}
+
+/* Titel aufklappbarer Karten bleibt neben dem Pfeil */
+.tiss-import details.karte > summary > span {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.tiss-import .tiss-zeile {
+  margin: 0;
+}
+
+.tiss-liste {
+  margin: 0 0 var(--a1);
+  padding-left: var(--a3);
+}
+
+.tiss-umbruch {
+  overflow-wrap: anywhere;
+}
+
+.tiss-import .gesperrt {
+  pointer-events: none;
+}

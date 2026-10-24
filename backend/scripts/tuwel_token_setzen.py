@@ -1,5 +1,5 @@
 """Fragt den Text nach `moodledownloader://token=` ab, gewinnt daraus den TUWEL-Token,
-schreibt ihn als TUWEL_TOKEN in studien-hub/.env und prüft die Verbindung.
+speichert ihn als TUWEL_TOKEN in der Windows-Anmeldeinformationsverwaltung und prüft die Verbindung.
 
 Die Eingabe ist verdeckt; der Token wird nie angezeigt oder protokolliert.
 
@@ -13,9 +13,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.config import PROJEKT_ORDNER, TUWEL_URL, tuwel_token  # noqa: E402
+from app import geheimnisse  # noqa: E402
+from app.config import TUWEL_URL, tuwel_token  # noqa: E402
 from app.tuwel_client import TuwelClient, TuwelFehler  # noqa: E402
-from app.tuwel_token import TokenFehler, schreibe_env_wert, token_aus_link  # noqa: E402
+from app.tuwel_token import TokenFehler, token_aus_link  # noqa: E402
 
 
 def main() -> int:
@@ -36,9 +37,8 @@ def main() -> int:
     finally:
         eingabe = None  # noqa: F841
 
-    env = PROJEKT_ORDNER / ".env"
-    schreibe_env_wert(env, "TUWEL_TOKEN", token)
-    print(f"Token gespeichert in {env} ({len(token)} Zeichen).")
+    geheimnisse.setze("TUWEL_TOKEN", token)
+    print(f"Token in der Windows-Anmeldeinformationsverwaltung gespeichert ({len(token)} Zeichen).")
 
     # Verbindungstest mit dem frisch gespeicherten Wert
     client = TuwelClient(TUWEL_URL, tuwel_token() or "")

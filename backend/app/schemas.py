@@ -7,6 +7,31 @@ from datetime import date, datetime, time
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class TeilOut(BaseModel):
+    """Untereintrag einer LVA (VO, UE, Gruppe …) mit eigenen Markierungen."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nummer: str | None
+    typ: str | None
+    gruppe: str | None
+    bezeichnung: str
+    steop: bool
+    anwesenheitspflicht: bool
+    aufzeichnung: bool
+    tuwel_kurs_id: int | None
+    anzahl_termine: int = 0
+
+
+class TeilUpdate(BaseModel):
+    steop: bool | None = None
+    anwesenheitspflicht: bool | None = None
+    aufzeichnung: bool | None = None
+    tuwel_kurs_id: int | None = None
+    gruppe: str | None = None
+
+
 class LvaOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -15,6 +40,7 @@ class LvaOut(BaseModel):
     titel: str
     kurzname: str | None
     semester: str
+    typ: str | None = None  # VO, UE … (VO und UE gleichen Titels sind eigene LVAs)
     farbe: str
     steop: bool
     anwesenheitspflicht: bool
@@ -25,14 +51,38 @@ class LvaOut(BaseModel):
     video_dauer_sekunden: int = 0  # Summe der bekannten Dauern
     videos_ohne_dauer: int = 0
     ects: float | None = None
-    lernparameter: dict[str, float] | None = None  # mit Standardwerten ergänzt
-    korrektur_faktor: float = 1.0  # aus selbst eingetragenen Lernzeiten gelernt
-    korrektur_rueckmeldungen: int = 0
+    lernparameter: dict[str, float] | None = None  # mit Standardwerten ergänzt (Stoffgewichtung)
+    pruefung: datetime | None = None  # nächste Prüfung (sonst die letzte), zu der man antritt (Reiter „Prüfungen“)
+    pruefung_quelle: str | None = None  # tiss | tuwel | manuell | vorschlag (nichts angemeldet: nächster Termin)
+    ziel: str = "normal"
+    bedarf_faktor: float = 1.0
+    lernwochen: int | None = None  # Lernblöcke so viele Wochen vor jeder Prüfung; None = Standard der Arbeitsregel
+    lernwochen_standard: int = 2
+    besuchen: bool | None = None  # nach Abschluss der STEOP: True eingeblendet, False ausgeblendet, None = automatisch
+    besucht: bool = True  # gilt gerade (STEOP offen: Variante, sonst manuell oder alle)
+    ist_steop: bool = False  # LVA oder einer ihrer Teile ist STEOP
+    gesamtbedarf_minuten: int = 0  # Lernbedarf fürs Semester
+    wochenbedarf_minuten: int = 0  # in einer normalen Woche außerhalb der Lernphase
+    teile: list[TeilOut] = []
+
+    @field_validator("ziel", mode="before")
+    @classmethod
+    def _ziel_standard(cls, wert):
+        return wert or "normal"
+
+    @field_validator("bedarf_faktor", mode="before")
+    @classmethod
+    def _faktor_standard(cls, wert):
+        return 1.0 if wert is None else wert
 
 
 class LvaUpdate(BaseModel):
     ects: float | None = Field(None, ge=0, le=60)
     lernparameter: dict[str, float] | None = None  # nur geänderte Werte; leeres Objekt = Standard
+    ziel: str | None = Field(None, pattern="^(bestehen|normal|gut)$")
+    bedarf_faktor: float | None = Field(None, ge=0, le=3)
+    lernwochen: int | None = Field(None, ge=0, le=20)  # null = Standard der Arbeitsregel
+    besuchen: bool | None = None  # null = wieder automatisch nach STEOP-Status
     titel: str | None = None
     kurzname: str | None = None
     farbe: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
@@ -40,6 +90,175 @@ class LvaUpdate(BaseModel):
     anwesenheitspflicht: bool | None = None
     aufzeichnung: bool | None = None
     tuwel_kurs_id: int | None = None
+
+
+class PruefungsterminOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    lva_id: int
+    quelle: str  # tiss | tuwel | manuell
+    titel: str
+    start: datetime
+    ende: datetime | None  # None = Uhrzeit unbekannt
+    ort: str | None
+    anmeldung_von: datetime | None
+    anmeldung_bis: datetime | None
+    abmeldung_bis: datetime | None
+    angemeldet: bool = False  # gilt (selbst gewählt oder automatisch)
+    angemeldet_automatisch: bool = True  # nicht selbst gewählt, sondern aus TISS (Liste oder Feed)
+    tiss_angemeldet: bool
+    bearbeitet: bool
+    notiz: str | None
+    anmeldestatus: str | None = None  # bald | offen | vorbei
+
+
+class PruefungenLvaOut(BaseModel):
+    lva_id: int
+    titel: str
+    kurzname: str | None
+    typ: str | None = None
+    farbe: str
+    angemeldet_id: int | None  # erster angemeldeter Termin (Auswahl „Angemeldet“)
+    lernwochen: int | None = None  # Lernblöcke so viele Wochen vor jeder Prüfung; None = Standard
+    lernwochen_standard: int = 2
+    feed_pruefungen: list[datetime] = []  # Prüfungen aus dem TISS-Feed ohne passenden Termin in der Liste
+    termine: list[PruefungsterminOut] = []
+
+
+class PruefungenOut(BaseModel):
+    lvas: list[PruefungenLvaOut]
+    sync: dict[str, dict | None]  # letzter Import je Quelle (tiss, tuwel)
+
+
+class PruefungsterminNeu(BaseModel):
+    lva_id: int
+    titel: str = Field("Prüfung", min_length=1, max_length=300)
+    start: datetime
+    ende: datetime | None = None
+    ort: str | None = Field(None, max_length=300)
+    anmeldung_von: datetime | None = None
+    anmeldung_bis: datetime | None = None
+    abmeldung_bis: datetime | None = None
+    angemeldet: bool = True
+    notiz: str | None = None
+
+    @model_validator(mode="after")
+    def _reihenfolge(self):
+        if self.ende is not None and self.ende <= self.start:
+            raise ValueError("Ende muss nach dem Beginn liegen")
+        if self.anmeldung_von and self.anmeldung_bis and self.anmeldung_bis < self.anmeldung_von:
+            raise ValueError("Anmeldeschluss liegt vor dem Anmeldebeginn")
+        return self
+
+
+class PruefungsterminAenderung(BaseModel):
+    """Nur gesetzte Felder ändern sich. Geänderte Zeiten eines importierten Termins überschreibt der Import nicht mehr."""
+
+    titel: str | None = Field(None, min_length=1, max_length=300)
+    start: datetime | None = None
+    ende: datetime | None = None
+    ort: str | None = Field(None, max_length=300)
+    anmeldung_von: datetime | None = None
+    anmeldung_bis: datetime | None = None
+    abmeldung_bis: datetime | None = None
+    angemeldet: bool | None = None  # null = wieder automatisch
+    notiz: str | None = None
+
+
+class AngemeldetWahl(BaseModel):
+    termin_id: int | None = None  # None = bei keinem Termin angemeldet
+    automatisch: bool = False  # eigene Wahl aufheben: wieder nach TISS (Prüfungsliste, Feed)
+
+
+class PruefungImport(BaseModel):
+    """Ein Termin, wie die Erweiterung ihn liest (Zeiten lokal, ohne Zeitzone)."""
+
+    extern_id: str = Field(min_length=1, max_length=300)
+    titel: str = Field("Prüfung", max_length=300)
+    start: datetime
+    ende: datetime | None = None
+    ort: str | None = Field(None, max_length=300)
+    anmeldung_von: datetime | None = None
+    anmeldung_bis: datetime | None = None
+    abmeldung_bis: datetime | None = None
+    angemeldet: bool = False
+
+    @field_validator("titel", mode="before")
+    @classmethod
+    def _titel_standard(cls, wert):
+        return (wert or "").strip()[:300] or "Prüfung"
+
+    @field_validator("start", "ende", "anmeldung_von", "anmeldung_bis", "abmeldung_bis", mode="after")
+    @classmethod
+    def _ohne_zeitzone(cls, wert):
+        # Zeiten mit Zeitzone nach Europe/Vienna umrechnen, gespeichert wird naiv lokal
+        if wert is not None and wert.tzinfo is not None:
+            from zoneinfo import ZoneInfo
+
+            return wert.astimezone(ZoneInfo("Europe/Vienna")).replace(tzinfo=None)
+        return wert
+
+
+class PruefungenLvaImport(BaseModel):
+    lva_id: int
+    termine: list[PruefungImport] = []
+    vollstaendig: bool = True  # alle Termine dieser Quelle für die LVA (fehlende fallen weg)
+
+
+class PruefungenImport(BaseModel):
+    quelle: str = Field(pattern="^(tiss|tuwel)$")
+    lvas: list[PruefungenLvaImport] = []
+    fehler: list[str] = []  # Probleme beim Lesen (z. B. Seite nicht lesbar), erscheinen in der Oberfläche
+    unlesbar_html: str | None = Field(None, max_length=200_000)  # Rohfassung einer Seite ohne erkannte Termine
+
+
+class SteopStatus(BaseModel):
+    """Nur gesetzte Felder werden geändert; erlaubte_ects None = Wert aus TISS."""
+
+    abgeschlossen: bool | None = None
+    erlaubte_ects: float | None = Field(None, ge=0, le=240)
+
+
+class VarianteAenderung(BaseModel):
+    enthalten: bool
+
+
+class SteopStudium(BaseModel):
+    studium: str
+    status: str | None = Field(None, pattern="^(abgeschlossen|ausgenommen|offen)$")
+    erlaubte_ects: float | None = None
+
+
+class SteopTissIn(BaseModel):
+    """STEOP-Status, wie die Erweiterung ihn aus TISS liest. `abgeschlossen` None = nicht sicher erkannt."""
+
+    studien: list[SteopStudium] = []
+    abgeschlossen: bool | None = None
+    erlaubte_ects: float | None = None
+    steop_nummern: list[str] = []
+    # Kriterienbaum der offenen STEOPs (steop_kriterien.py), oberste Ebene mit `verknuepfung` verbunden
+    kriterien: list[dict] = []
+    verknuepfung: str = Field("AND", pattern="^(AND|OR)$")
+    detail_html: str | None = Field(None, max_length=200_000)  # Rohfassung der Detailansicht, nur zur Prüfung
+
+
+class SteopStatusOut(BaseModel):
+    abgeschlossen: bool
+    quelle: str | None = None  # tiss | manuell | None (noch nie gesetzt)
+    tiss: dict | None = None  # letzter Stand aus TISS: studien, erlaubte_ects, steop_nummern, zeit
+    erlaubte_ects: float | None = None  # Nicht-STEOP-ECTS, die vor Abschluss vorgezogen werden dürfen
+    erlaubte_ects_quelle: str | None = None  # manuell | tiss | None
+    vorgezogen_ects: float = 0  # Nicht-STEOP-LVAs in der Variante
+    # Variante (nur solange die STEOP offen ist)
+    semester: str | None = None
+    steop_gesamt: int = 0  # STEOP-LVAs im Semester
+    steop_gewaehlt: int = 0  # davon in der Variante
+    variante_bearbeitet: bool = False  # False = automatisch erzeugt
+    # Kriterien aus TISS, ausgewertet für die Variante (Knoten: erfuellt_variante; LVA: lva_id, in_variante, erledigt)
+    kriterien: list[dict] = []
+    verknuepfung: str = "AND"
+    warnungen: list[str] = []
 
 
 class TerminOut(BaseModel):
@@ -59,17 +278,79 @@ class TerminOut(BaseModel):
     steop: bool
     anwesenheitspflicht: bool
     aufzeichnung: bool
+    # Werte des Teils (bzw. der LVA), die ohne Abweichung gelten
     lva_steop: bool
     lva_anwesenheitspflicht: bool
     lva_aufzeichnung: bool
+    teil_id: int | None = None
+    teil_bezeichnung: str | None = None
+    quelle: str = "tiss"  # tiss | manuell (selbst im Kalender angelegt: bearbeit- und löschbar)
 
 
 class TerminUpdate(BaseModel):
-    """Abweichungen von den LVA-Markierungen. `null` setzt auf den LVA-Wert zurück."""
+    """Abweichungen von den LVA-Markierungen. `null` setzt auf den LVA-Wert zurück. Zeit, Titel, Ort und Typ nur bei
+    selbst angelegten Terminen."""
 
     steop_abweichung: bool | None = None
     anwesenheit_abweichung: bool | None = None
     aufzeichnung_abweichung: bool | None = None
+    titel: str | None = Field(None, min_length=1, max_length=500)
+    start: datetime | None = None
+    ende: datetime | None = None
+    ort: str | None = Field(None, max_length=300)
+    typ: str | None = Field(None, pattern="^(VO|UE|VU|PRUEFUNG|ABGABE|SONSTIGE)$")
+
+
+class TerminNeu(BaseModel):
+    """Eigener Termin zu einer LVA (z. B. Tutorium, Lerngruppe mit Anwesenheit)."""
+
+    lva_id: int
+    titel: str = Field(min_length=1, max_length=500)
+    start: datetime
+    ende: datetime
+    ort: str | None = Field(None, max_length=300)
+    typ: str = Field("SONSTIGE", pattern="^(VO|UE|VU|PRUEFUNG|ABGABE|SONSTIGE)$")
+
+    @model_validator(mode="after")
+    def _reihenfolge(self):
+        if self.ende <= self.start:
+            raise ValueError("Ende muss nach dem Beginn liegen")
+        return self
+
+
+class PersoenlichNeu(BaseModel):
+    """Persönlicher Termin ohne LVA: Arbeit und Lernen werden darum herum geplant."""
+
+    titel: str = Field(min_length=1, max_length=300)
+    start: datetime
+    ende: datetime
+    ort: str | None = Field(None, max_length=300)
+    notiz: str | None = None
+
+    @model_validator(mode="after")
+    def _reihenfolge(self):
+        if self.ende <= self.start:
+            raise ValueError("Ende muss nach dem Beginn liegen")
+        return self
+
+
+class PersoenlichAenderung(BaseModel):
+    titel: str | None = Field(None, min_length=1, max_length=300)
+    start: datetime | None = None
+    ende: datetime | None = None
+    ort: str | None = Field(None, max_length=300)
+    notiz: str | None = None
+
+
+class PersoenlichOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    titel: str
+    start: datetime
+    ende: datetime
+    ort: str | None
+    notiz: str | None
 
 
 class FreierTag(BaseModel):
@@ -120,11 +401,13 @@ class ArbeitsregelSchema(BaseModel):
     lern_min_block_minuten: int = Field(45, ge=15, le=8 * 60)
     lern_max_block_minuten: int = Field(120, ge=15, le=8 * 60)
     lern_tage: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4, 5])
-    ects_warnschwelle: float = Field(0.5, gt=0, le=5)
+    ects_faktor: float = Field(0.7, gt=0, le=2)  # ECTS sind meist zu hoch angesetzt
+    lernphase_wochen: int = Field(2, ge=0, le=20)  # Standard: Lernblöcke so viele Wochen vor jeder Prüfung
 
     @field_validator(
         "max_tag_stunden", "lernfenster_minuten", "voller_unitag_stunden", "min_freie_tage",
-        "lern_min_block_minuten", "lern_max_block_minuten", "lern_tage", "ects_warnschwelle", mode="before",
+        "lern_min_block_minuten", "lern_max_block_minuten", "lern_tage", "ects_faktor", "lernphase_wochen",
+        mode="before",
     )
     @classmethod
     def _null_als_standard(cls, wert, info):
@@ -246,6 +529,7 @@ class LernblockOut(BaseModel):
     geplante_minuten: int
     notiz: str | None
     zuteilung: dict[str, int]
+    altpruefung: dict | None = None  # Altprüfung aus der MB Cloud, die der Block behandelt
 
 
 class LernblockUpdate(BaseModel):
@@ -258,17 +542,28 @@ class LernblockUpdate(BaseModel):
 
 
 class WochenbedarfOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    """Lernbedarf einer LVA in einer Woche (aus den ECTS)."""
 
     lva_id: int
     lva_name: str
-    unterlagen_minuten: int
-    praesenz_minuten: int
-    gesamt_minuten: int
-    soll_minuten: int | None
-    korrektur: float
-    unterlagen: list[dict]
-    warnung: str | None
+    gesamt_minuten: int  # Semesterbedarf
+    plan_minuten: int  # Anteil dieser Woche ohne Nachholen
+    soll_minuten: int  # inklusive Nachholen
+    geplant_minuten: int  # Lernblöcke dieser Woche
+    rueckstand_minuten: int  # positiv = hinter dem Plan
+    pruefung: date | None
+    lernphase: bool
+    ohne_ects: bool
+
+
+class Rueckstand(BaseModel):
+    lva_id: int
+    lva_name: str
+    fehlend_minuten: int
+    rueckstand_minuten: int
+    nachholen_pro_woche_minuten: int
+    bis: date | None
+    text: str
 
 
 class VorschlagOut(BaseModel):
@@ -279,13 +574,41 @@ class VorschlagOut(BaseModel):
     lern_stunden: float = 0
     lern_offen_stunden: float = 0
     konflikte: list[str] = []
+    rueckstaende: list[Rueckstand] = []
+    hinweise: list[str] = []
     lernbedarf: list[WochenbedarfOut] = []
-    ects_warnungen: list[str] = []
     soll_stunden: float
     verplant_stunden: float
     fehlende_stunden: float
     bloecke: list[ArbeitsblockOut]
     geopferte_termine: list[GeopferterTermin]
+
+
+class WochenStunden(BaseModel):
+    uni: float
+    arbeit: float
+    lernen: float
+    freizeit: float
+    wach: float
+    arbeit_soll: float
+    vorschlaege: bool
+
+
+class PruefungCountdown(BaseModel):
+    lva_id: int
+    lva_name: str
+    farbe: str
+    zeitpunkt: datetime
+    tage: int
+    quelle: str | None
+    in_dieser_woche: bool
+
+
+class WochenuebersichtOut(BaseModel):
+    woche: date
+    stunden: WochenStunden
+    pruefungen: list[PruefungCountdown]
+    lernstand: list[WochenbedarfOut]
 
 
 class TissEinstellungen(BaseModel):
@@ -298,5 +621,7 @@ class ImportErgebnisOut(BaseModel):
     geloescht: int
     unveraendert: int
     neue_lvas: list[str]
+    freie_zeitraeume: int = 0
+    entfernte_lvas: list[str] = []  # ohne Termine im Feed und ohne Unterlagen
     neu_geplante_wochen: list[date]
     letzter_import: datetime | None = None

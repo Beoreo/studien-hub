@@ -1,0 +1,417 @@
+/* Wissensstand: Stufenfarben, Stufenbalken, Themen-Kacheln. Nur Variablen aus design.css. */
+
+/* --- Stufen 0–4: Fläche und Textfarbe (Kontrast ≥ 4,5:1) ------------------------------------- */
+
+.wissensstand .stufe-0,
+.dialog .stufe-0,
+.hinweis .stufe-0 {
+  background: var(--flaeche-stark);
+  color: var(--text);
+}
+
+.wissensstand .stufe-1,
+.dialog .stufe-1,
+.hinweis .stufe-1 {
+  background: var(--verwerfen-toenung);
+  color: var(--verwerfen-dunkel);
+}
+
+.wissensstand .stufe-2,
+.dialog .stufe-2,
+.hinweis .stufe-2 {
+  background: var(--primaer-toenung);
+  color: var(--text);
+}
+
+.wissensstand .stufe-3,
+.dialog .stufe-3,
+.hinweis .stufe-3 {
+  background: color-mix(in srgb, var(--primaer) 22%, var(--hintergrund));
+  color: var(--text);
+}
+
+.wissensstand .stufe-4,
+.dialog .stufe-4,
+.hinweis .stufe-4 {
+  background: var(--bestaetigen-toenung);
+  color: var(--bestaetigen);
+}
+
+/* Stufe als kleines Etikett (auch als Button in der Selbsteinschätzung) */
+.stufe-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a0);
+  padding: 0 var(--a1);
+  font: inherit;
+  font-size: var(--groesse-klein);
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+  border: var(--rand-breite) solid transparent;
+  border-radius: var(--radius);
+}
+
+button.stufe-chip {
+  min-height: var(--steuer-hoehe);
+  padding: 0 var(--a2);
+  cursor: pointer;
+}
+
+button.stufe-chip:hover {
+  border-color: var(--rand-feld);
+}
+
+.stufe-chip.gewaehlt {
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+.stufe-chip .icon {
+  width: var(--icon-klein);
+  height: var(--icon-klein);
+}
+
+.stufen-reihe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--a1);
+  margin-top: var(--a1);
+}
+
+/* --- Fällige Wiederholungen ------------------------------------------------------------------- */
+
+.faellig-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.faellig-liste li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1);
+  padding: var(--a1) 0;
+  border-bottom: var(--rand-breite) solid var(--rand);
+}
+
+.faellig-liste li:first-child {
+  padding-top: 0;
+}
+
+.faellig-liste li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.faellig-text {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+/* --- LVA-Karte -------------------------------------------------------------------------------- */
+
+.wissen-lva .karte-kopf h2 {
+  min-width: 0;
+}
+
+.wissen-fortschritt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a0);
+}
+
+.stufen-balken {
+  display: flex;
+  height: var(--steuer-klein);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--flaeche);
+}
+
+.stufen-balken > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--steuer-klein);
+  font-size: var(--groesse-klein);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.themen-kacheln {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(192px, 1fr));
+  gap: var(--a1);
+}
+
+.thema-kachel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--a0);
+  min-width: 0;
+  padding: var(--a1) var(--a2) var(--a1) var(--a1);
+  font: inherit;
+  text-align: left;
+  border: var(--rand-breite) solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.thema-kachel:hover {
+  border-color: var(--rand-feld);
+}
+
+.thema-kachel.gewaehlt {
+  outline: 2px solid var(--primaer);
+  outline-offset: 1px;
+}
+
+/* Titel immer in Textfarbe, nur die Stufenzeile im Ton der Stufe */
+.thema-titel {
+  color: var(--text);
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+.thema-info {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a1);
+  font-size: var(--groesse-klein);
+}
+
+.thema-info .icon {
+  width: var(--icon-klein);
+  height: var(--icon-klein);
+}
+
+.wissen-notizen > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a1);
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+}
+
+.wissen-notizen > summary::-webkit-details-marker {
+  display: none;
+}
+
+.wissen-notizen > summary .icon-auf {
+  transition: transform 0.15s;
+}
+
+.wissen-notizen[open] > summary .icon-auf {
+  transform: rotate(90deg);
+}
+
+.wissen-notizen ul {
+  margin: var(--a1) 0 0;
+  padding-left: var(--a3);
+}
+
+.wissen-notizen li + li {
+  margin-top: var(--a0);
+}
+
+.wissen-neu {
+  display: flex;
+  align-items: center;
+  gap: var(--a1);
+  max-width: 480px;
+}
+
+.wissen-neu .eingabe {
+  flex: 1;
+  min-width: 0;
+}
+
+/* --- Thema-Dialog ----------------------------------------------------------------------------- */
+
+.thema-abschnitt {
+  gap: var(--a1);
+}
+
+.thema-abschnitt .stufen-reihe {
+  margin-top: 0;
+}
+
+.thema-titel-feld {
+  flex: 1 1 240px;
+}
+
+.wissen-abschnitte {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2);
+}
+
+.wissen-abschnitt-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a0) var(--a1);
+}
+
+.wissen-abschnitt-kopf a {
+  overflow-wrap: anywhere;
+}
+
+.wissen-abschnitt-text {
+  margin: var(--a0) 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .themen-kacheln {
+    grid-template-columns: repeat(auto-fill, minmax(144px, 1fr));
+  }
+}
+
+/* --- Zeitstrahl je Kurs: Abschnitte bis zu jeder Prüfung ---------------------------------------- */
+
+.kurs-zeitstrahl {
+  display: flex;
+  gap: var(--a0);
+  min-width: 0;
+}
+
+.kurs-abschnitt {
+  --lva: var(--primaer);
+  position: relative;
+  flex: 1 1 0;
+  min-width: calc(var(--a6) * 1.5);
+  height: var(--a6);
+  padding: 0 var(--a1);
+  border: var(--rand-breite) solid var(--rand);
+  border-bottom: var(--streifen) solid var(--lva);
+  border-radius: var(--radius);
+  background: var(--flaeche);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.kurs-abschnitt:hover {
+  background: var(--flaeche-stark);
+}
+
+.kurs-abschnitt.gewaehlt {
+  outline: calc(var(--rand-breite) * 2) solid var(--primaer);
+  outline-offset: calc(var(--rand-breite) * -1);
+}
+
+.kurs-abschnitt.vorbei {
+  opacity: 0.6;
+}
+
+/* Fortschritt des Stoffs als Füllung, heute als senkrechter Strich */
+.kurs-abschnitt-fuellung {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--bestaetigen-toenung);
+}
+
+.kurs-heute {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: calc(var(--rand-breite) * 2) solid var(--primaer);
+}
+
+.kurs-abschnitt-text {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a0);
+  font-size: var(--groesse-klein);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kurs-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a1);
+  padding: var(--a2);
+  border: var(--rand-breite) solid var(--rand);
+  border-radius: var(--radius);
+}
+
+.kurs-detail-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1);
+}
+
+.kurs-balken-zeile {
+  display: grid;
+  grid-template-columns: calc(var(--a6) * 2.5) 1fr calc(var(--a6) * 1);
+  align-items: center;
+  gap: var(--a1);
+}
+
+.kurs-balken {
+  height: var(--a1);
+  border-radius: var(--radius);
+  background: var(--flaeche-stark);
+  overflow: hidden;
+}
+
+.kurs-balken span {
+  display: block;
+  height: 100%;
+}
+
+.kurs-balken.stoff span {
+  background: var(--bestaetigen);
+}
+
+.kurs-balken.zeit span {
+  background: var(--text-leise);
+}
+
+.kurs-balken-wert {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.kurs-stoff {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a0);
+  overflow-wrap: anywhere;
+}
+
+.wissensstand .gesperrt {
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .kurs-balken-zeile {
+    grid-template-columns: calc(var(--a6) * 2) 1fr calc(var(--a6) * 0.9);
+  }
+
+  .kurs-detail {
+    padding: var(--a1);
+  }
+}

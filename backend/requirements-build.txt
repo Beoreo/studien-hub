@@ -1,0 +1,2 @@
+# Nur zum Paketieren (build.ps1): StudienHub.exe im onedir-Modus
+pyinstaller==6.11.1

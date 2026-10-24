@@ -49,7 +49,7 @@ def flache_parameter(werte: dict[str, Any], praefix: str = "") -> dict[str, str]
 class TuwelClient:
     def __init__(self, url: str, token: str, http: httpx.Client | None = None, timeout: float = 30):
         if not token:
-            raise TuwelFehler("Kein TUWEL-Token gesetzt – bitte TUWEL_TOKEN in der .env eintragen.")
+            raise TuwelFehler("Kein TUWEL-Token gesetzt – bitte im Hub unter „Einrichtung“ eintragen.")
         self.url = url.rstrip("/")
         self._token = token
         self._http = http or httpx.Client(timeout=timeout, follow_redirects=True)

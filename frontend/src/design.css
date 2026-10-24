@@ -1,0 +1,886 @@
+﻿/* Design-Grundlage: alle Farben, Größen, Abstände und Radien als Variablen.
+   Im übrigen CSS und in den Komponenten nur diese Variablen verwenden (CLAUDE.md „Design-Regeln“).
+   Kontraste nach WCAG AA geprüft: Text 16,7:1 · leiser Text ≥ 5,9:1 · Primär 6,3:1 · Bestätigen 6,1:1 ·
+   Verwerfen 4,7:1 auf Weiß, auf Rot-Tönung die dunklere Abwandlung 5,3:1 · Feldrahmen ≥ 3:1. */
+
+:root {
+  /* Farben */
+  --primaer: #006598;
+  --primaer-dunkel: #08588a; /* Hover: Primär mit 15 % Textfarbe */
+  --primaer-toenung: rgb(0 101 152 / 0.1);
+  --hintergrund: #ffffff;
+  --text: #320e3b;
+  --text-leise: rgb(50 14 59 / 0.72);
+  --flaeche: rgb(50 14 59 / 0.04);
+  --flaeche-stark: rgb(50 14 59 / 0.08);
+  --rand: rgb(50 14 59 / 0.16);
+  --rand-feld: rgb(50 14 59 / 0.5);
+  --bestaetigen: #2c6e49;
+  --bestaetigen-dunkel: #2d6047;
+  --bestaetigen-toenung: rgb(44 110 73 / 0.1);
+  --verwerfen: #df2935;
+  --verwerfen-dunkel: #bc2436; /* Hover und Text auf Rot-Tönung */
+  --verwerfen-toenung: rgb(223 41 53 / 0.1);
+  --abdunkeln: rgb(50 14 59 / 0.4);
+  --schatten: 0 8px 24px rgb(50 14 59 / 0.16);
+
+  /* LVA-Farben: gedämpft, je ≥ 4,6:1 gegen die Termin-Fläche */
+  --lva-1: #2a6a8f;
+  --lva-2: #22786a;
+  --lva-3: #4c7a2e;
+  --lva-4: #8a6a12;
+  --lva-5: #a0531c;
+  --lva-6: #a33a55;
+  --lva-7: #8e3f86;
+  --lva-8: #6a4a9e;
+  --lva-9: #44569e;
+  --lva-10: #6b7419;
+
+  /* Wochenbalken */
+  --balken-uni: var(--primaer);
+  --balken-arbeit: var(--text-leise);
+  --balken-lernen: rgb(0 101 152 / 0.45);
+  --balken-freizeit: var(--flaeche-stark);
+
+  /* Schrift: eine Familie, drei Größen für Inhalte */
+  --schrift: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --schrift-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --groesse-klein: 0.8125rem; /* 13 px: Zusatzinfos, Badges, Tabellenköpfe */
+  --groesse: 0.9375rem; /* 15 px: Fließtext, Bedienelemente */
+  --groesse-gross: 1.25rem; /* 20 px: Seitentitel */
+  --zeile: 1.5;
+
+  /* Abstände im 8-px-Raster */
+  --a0: 4px; /* nur für enge Abstände innerhalb von Komponenten */
+  --a1: 8px;
+  --a2: 16px;
+  --a3: 24px;
+  --a4: 32px;
+  --a6: 48px;
+
+  /* Formen */
+  --radius: 6px;
+  --rand-breite: 1px;
+  --streifen: 4px;
+  --icon: 16px;
+  --icon-klein: 14px;
+  --punkt: 12px;
+  --steuer-klein: 24px;
+  --steuer-hoehe: 32px; /* Buttons, Eingabefelder */
+  --leiste-breite: 256px;
+  --seitenleiste-breite: 384px;
+  --inhalt-breite: 1200px;
+
+  font-family: var(--schrift);
+  font-size: var(--groesse);
+  line-height: var(--zeile);
+  color: var(--text);
+  background: var(--hintergrund);
+  accent-color: var(--primaer);
+}
+
+/* --- Grundlagen ------------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--hintergrund);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: 1.3;
+}
+
+h1,
+h2 {
+  font-size: var(--groesse-gross);
+  font-weight: 600;
+}
+
+h3,
+h4 {
+  font-size: var(--groesse);
+  font-weight: 600;
+}
+
+p {
+  margin: 0 0 var(--a1);
+}
+
+a {
+  color: var(--primaer);
+}
+
+a:hover {
+  color: var(--primaer-dunkel);
+}
+
+code,
+pre {
+  font-family: var(--schrift-mono);
+  font-size: var(--groesse-klein);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primaer);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--primaer-toenung);
+}
+
+.leise {
+  color: var(--text-leise);
+}
+
+.klein {
+  font-size: var(--groesse-klein);
+}
+
+.nur-screenreader {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.icon {
+  flex: none;
+  width: var(--icon);
+  height: var(--icon);
+  vertical-align: -3px;
+}
+
+/* --- Button ----------------------------------------------------------------------------------- */
+
+.knopf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--a1);
+  min-height: var(--steuer-hoehe);
+  padding: 0 var(--a2);
+  font: inherit;
+  font-size: var(--groesse);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  border: var(--rand-breite) solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.knopf:disabled,
+.knopf[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.knopf-primaer {
+  background: var(--primaer);
+  color: var(--hintergrund);
+}
+
+.knopf-primaer:hover:not(:disabled) {
+  background: var(--primaer-dunkel);
+  color: var(--hintergrund);
+}
+
+.knopf-bestaetigen {
+  background: var(--bestaetigen);
+  color: var(--hintergrund);
+}
+
+.knopf-bestaetigen:hover:not(:disabled) {
+  background: var(--bestaetigen-dunkel);
+}
+
+.knopf-verwerfen {
+  background: var(--verwerfen);
+  color: var(--hintergrund);
+}
+
+.knopf-verwerfen:hover:not(:disabled) {
+  background: var(--verwerfen-dunkel);
+}
+
+.knopf-umriss {
+  background: var(--hintergrund);
+  color: var(--text);
+  border-color: var(--rand-feld);
+}
+
+.knopf-umriss:hover:not(:disabled) {
+  background: var(--flaeche);
+  color: var(--text);
+}
+
+.knopf-icon {
+  width: var(--steuer-hoehe);
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.knopf-icon:hover:not(:disabled) {
+  background: var(--flaeche-stark);
+}
+
+.knopf-icon.ton-verwerfen {
+  color: var(--verwerfen);
+}
+
+.knopf-icon.ton-verwerfen:hover:not(:disabled) {
+  background: var(--verwerfen-toenung);
+  color: var(--verwerfen-dunkel);
+}
+
+.knopf-icon.aktiv {
+  background: var(--primaer-toenung);
+  color: var(--primaer);
+}
+
+.knopf.klein {
+  min-height: var(--steuer-klein);
+  padding: 0 var(--a1);
+  font-size: var(--groesse-klein);
+}
+
+.knopf-icon.klein {
+  width: var(--steuer-klein);
+  padding: 0;
+}
+
+.knopf-gruppe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1);
+}
+
+/* --- Eingabefeld, Auswahl, Kontrollkästchen ---------------------------------------------------- */
+
+.feld {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a0);
+  min-width: 0;
+}
+
+.feld-beschriftung {
+  font-size: var(--groesse-klein);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.feld-hilfe {
+  font-size: var(--groesse-klein);
+  color: var(--text-leise);
+}
+
+.feld-fehler {
+  font-size: var(--groesse-klein);
+  color: var(--verwerfen);
+}
+
+.eingabe {
+  min-height: var(--steuer-hoehe);
+  width: 100%;
+  max-width: 100%;
+  padding: 0 var(--a1);
+  font: inherit;
+  font-size: var(--groesse);
+  color: var(--text);
+  background: var(--hintergrund);
+  border: var(--rand-breite) solid var(--rand-feld);
+  border-radius: var(--radius);
+}
+
+textarea.eingabe {
+  padding: var(--a1);
+  min-height: calc(var(--steuer-hoehe) * 2);
+  resize: vertical;
+}
+
+select.eingabe {
+  padding-right: var(--a1);
+}
+
+.eingabe:focus-visible {
+  outline: 2px solid var(--primaer);
+  outline-offset: 0;
+  border-color: var(--primaer);
+}
+
+.eingabe:disabled {
+  background: var(--flaeche);
+  color: var(--text-leise);
+}
+
+.eingabe.schmal {
+  width: 96px;
+}
+
+.eingabe.mittel {
+  width: 192px;
+}
+
+input[type='range'].eingabe {
+  border: none;
+  padding: 0;
+  min-height: auto;
+}
+
+input[type='color'].eingabe {
+  width: var(--steuer-hoehe);
+  padding: 2px;
+}
+
+.kontrolle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a1);
+  cursor: pointer;
+  min-height: var(--steuer-klein);
+}
+
+.kontrolle input {
+  margin: 0;
+  width: var(--icon);
+  height: var(--icon);
+  flex: none;
+}
+
+.formular {
+  display: grid;
+  gap: var(--a2);
+  max-width: 640px;
+}
+
+.formular-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--a2);
+}
+
+/* --- Karte ------------------------------------------------------------------------------------ */
+
+.karte {
+  background: var(--hintergrund);
+  border: var(--rand-breite) solid var(--rand);
+  border-radius: var(--radius);
+  padding: var(--a2);
+  min-width: 0;
+}
+
+.karte + .karte {
+  margin-top: var(--a2);
+}
+
+/* im Raster und in Stapeln regelt `gap` den Abstand */
+.raster > .karte + .karte,
+.stapel > .karte + .karte,
+.seite > .karte + .karte {
+  margin-top: 0;
+}
+
+.karte-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--a1) var(--a2);
+  margin-bottom: var(--a2);
+}
+
+.karte-kopf h2,
+.karte-kopf h3 {
+  font-size: var(--groesse);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a1);
+}
+
+.karte-kopf:last-child {
+  margin-bottom: 0;
+}
+
+details.karte > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--a1);
+  font-weight: 600;
+}
+
+/* Pfeil und Titel bleiben in einer Zeile (Titel schrumpft zuerst); nur die Zusatzangaben brechen um */
+details.karte > summary {
+  flex-wrap: wrap;
+}
+
+details.karte > summary > span:not(.karte-summary-aktionen) {
+  flex: 1 1 0;
+  min-width: 12ch;
+}
+
+/* Zusatzangaben im Kopf aufklappbarer Karten (Anzahl, Badges) rechtsbündig */
+.karte-summary-aktionen {
+  margin-left: auto;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1);
+  font-weight: 400;
+}
+
+/* Code, Pfade und Schlüssel: Monospace, brechen um statt überzulaufen */
+.code-block {
+  margin: 0;
+  padding: var(--a1) var(--a2);
+  font-family: var(--schrift-mono);
+  font-size: var(--groesse-klein);
+  background: var(--flaeche);
+  border: var(--rand-breite) solid var(--rand);
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+details.karte > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.karte > summary .icon-auf {
+  transition: transform 0.15s;
+}
+
+details.karte[open] > summary {
+  margin-bottom: var(--a2);
+}
+
+details.karte[open] > summary .icon-auf {
+  transform: rotate(90deg);
+}
+
+/* --- Tabelle ---------------------------------------------------------------------------------- */
+
+.tabelle-huelle {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--groesse);
+}
+
+.tabelle th,
+.tabelle td {
+  padding: var(--a1);
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: var(--rand-breite) solid var(--rand);
+}
+
+.tabelle th {
+  font-size: var(--groesse-klein);
+  font-weight: 600;
+  color: var(--text-leise);
+  white-space: nowrap;
+}
+
+.tabelle tbody tr:hover td {
+  background: var(--flaeche);
+}
+
+.tabelle .zahl {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tabelle .mitte {
+  text-align: center;
+}
+
+.tabelle tr.gedimmt td {
+  color: var(--text-leise);
+}
+
+/* --- Badge ------------------------------------------------------------------------------------ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a0);
+  padding: 0 var(--a1);
+  font-size: var(--groesse-klein);
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+  border-radius: var(--radius);
+  background: var(--flaeche-stark);
+  color: var(--text);
+}
+
+.badge .icon {
+  width: var(--icon-klein);
+  height: var(--icon-klein);
+  vertical-align: -2px;
+}
+
+.badge-primaer {
+  background: var(--primaer-toenung);
+  color: var(--primaer);
+}
+
+.badge-bestaetigen {
+  background: var(--bestaetigen-toenung);
+  color: var(--bestaetigen);
+}
+
+.badge-verwerfen {
+  background: var(--verwerfen-toenung);
+  color: var(--verwerfen-dunkel);
+}
+
+.badge-umriss {
+  background: transparent;
+  border: var(--rand-breite) dashed var(--rand-feld);
+  line-height: 18px;
+}
+
+/* --- Hinweis: eine Zeile Zusammenfassung, Details aufklappbar --------------------------------- */
+
+.hinweis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a1);
+  padding: var(--a1) var(--a2);
+  border-radius: var(--radius);
+  border: var(--rand-breite) solid var(--rand);
+  background: var(--flaeche);
+  color: var(--text);
+}
+
+.hinweis-zeile {
+  display: flex;
+  align-items: center;
+  gap: var(--a1);
+  min-height: var(--steuer-hoehe);
+  flex-wrap: wrap;
+}
+
+.hinweis-zeile > .hinweis-text {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.hinweis-details {
+  font-size: var(--groesse);
+  padding-bottom: var(--a1);
+}
+
+.hinweis-details ul {
+  margin: 0;
+  padding-left: var(--a3);
+}
+
+.hinweis-details li + li {
+  margin-top: var(--a0);
+}
+
+.hinweis-info {
+  background: var(--primaer-toenung);
+  border-color: transparent;
+}
+
+.hinweis-info > .hinweis-zeile > .icon {
+  color: var(--primaer);
+}
+
+.hinweis-erfolg {
+  background: var(--bestaetigen-toenung);
+  border-color: transparent;
+}
+
+.hinweis-erfolg > .hinweis-zeile > .icon {
+  color: var(--bestaetigen);
+}
+
+.hinweis-fehler,
+.hinweis-warnung {
+  background: var(--verwerfen-toenung);
+  border-color: transparent;
+}
+
+.hinweis-fehler > .hinweis-zeile > .icon,
+.hinweis-warnung > .hinweis-zeile > .icon {
+  color: var(--verwerfen-dunkel);
+}
+
+/* --- Dialog und Seitenleiste ------------------------------------------------------------------- */
+
+.abdunkeln {
+  position: fixed;
+  inset: 0;
+  background: var(--abdunkeln);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--a2);
+}
+
+.dialog {
+  background: var(--hintergrund);
+  border-radius: var(--radius);
+  box-shadow: var(--schatten);
+  width: min(480px, 100%);
+  max-height: calc(100vh - var(--a4));
+  overflow-y: auto;
+  padding: var(--a3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2);
+}
+
+/* Fokus wird beim Öffnen nur für Tastatur und Screenreader in den Dialog gesetzt – ohne sichtbaren Rahmen */
+.dialog:focus,
+.seitenleiste:focus {
+  outline: none;
+}
+
+.dialog.breit {
+  width: min(720px, 100%);
+}
+
+.dialog-kopf,
+.seitenleiste-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--a2);
+}
+
+.dialog-kopf h2,
+.seitenleiste-kopf h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--a1);
+  min-width: 0;
+}
+
+.dialog-fuss,
+.seitenleiste-fuss {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--a1);
+}
+
+.abdunkeln.seitlich {
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+}
+
+.seitenleiste {
+  background: var(--hintergrund);
+  box-shadow: var(--schatten);
+  width: min(var(--seitenleiste-breite), 100%);
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--a3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2);
+}
+
+.seitenleiste-inhalt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2);
+  flex: 1;
+}
+
+/* --- Menü ------------------------------------------------------------------------------------- */
+
+.menue {
+  position: relative;
+  display: inline-block;
+}
+
+.menue-liste {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--a0));
+  z-index: 50;
+  min-width: 240px;
+  padding: var(--a0);
+  background: var(--hintergrund);
+  border: var(--rand-breite) solid var(--rand);
+  border-radius: var(--radius);
+  box-shadow: var(--schatten);
+  display: flex;
+  flex-direction: column;
+}
+
+.menue-eintrag {
+  display: flex;
+  align-items: center;
+  gap: var(--a1);
+  min-height: var(--steuer-hoehe);
+  padding: 0 var(--a1);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.menue-eintrag:hover {
+  background: var(--flaeche-stark);
+}
+
+.menue-eintrag.ton-verwerfen {
+  color: var(--verwerfen-dunkel);
+}
+
+/* --- Fortschritt ------------------------------------------------------------------------------ */
+
+.fortschritt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a0);
+}
+
+.fortschritt-balken {
+  height: var(--a1);
+  border-radius: var(--radius);
+  background: var(--flaeche-stark);
+  overflow: hidden;
+}
+
+.fortschritt-balken > span {
+  display: block;
+  height: 100%;
+  background: var(--primaer);
+  transition: width 0.3s;
+}
+
+/* --- Leerer Zustand --------------------------------------------------------------------------- */
+
+.leer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--a1);
+  padding: var(--a4) var(--a2);
+  color: var(--text-leise);
+}
+
+.leer > .icon {
+  width: var(--a4);
+  height: var(--a4);
+}
+
+.leer h3 {
+  color: var(--text);
+}
+
+.leer p {
+  max-width: 480px;
+}
+
+/* --- Seitenaufbau ----------------------------------------------------------------------------- */
+
+.seite {
+  padding: var(--a3);
+  max-width: var(--inhalt-breite);
+  display: flex;
+  flex-direction: column;
+  gap: var(--a3);
+}
+
+.seiten-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--a2);
+}
+
+.seiten-kopf-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a0);
+  max-width: 720px;
+}
+
+.seiten-kopf-text p {
+  margin: 0;
+  color: var(--text-leise);
+}
+
+.stapel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2);
+}
+
+.reihe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1) var(--a2);
+}
+
+.raster {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--a2);
+}
+
+.farbpunkt {
+  display: inline-block;
+  flex: none;
+  width: var(--punkt);
+  height: var(--punkt);
+  border-radius: 50%;
+}
+
+@media (max-width: 640px) {
+  .seite {
+    padding: var(--a2);
+    gap: var(--a2);
+  }
+
+  .raster {
+    grid-template-columns: 1fr;
+  }
+
+  .dialog,
+  .seitenleiste {
+    padding: var(--a2);
+  }
+}

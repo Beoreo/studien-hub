@@ -14,20 +14,24 @@ from datetime import date, datetime, time, timedelta
 
 import httpx
 from icalendar import Calendar
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from .config import ZEITZONE
+from .lva_struktur import finde_oder_erzeuge_teil, freier_name, ist_freier_eintrag, zeitraum_aus_termin
 from .models import (
-    STANDARD_FARBEN,
     TYP_ABGABE,
     TYP_PRUEFUNG,
     TYP_SONSTIGE,
     TYP_UE,
     TYP_VO,
     TYP_VU,
+    Dokument,
+    FreierZeitraum,
+    Lernblock,
     Lva,
     Termin,
+    TuwelKurs,
 )
 from .planung import wochenbeginn
 
@@ -49,6 +53,12 @@ class TissTermin:
     ort: str | None
     beschreibung: str | None
     zusammenfassung: str
+    lva_typ: str | None = None  # Kürzel aus dem Titel: VO, UE, VU, … (auch bei Prüfungen)
+
+    @property
+    def ist_frei(self) -> bool:
+        """Ferien, Feiertage, Rektorstag … – keine LVA, sondern vorlesungsfreie Zeit."""
+        return ist_freier_eintrag(self.zusammenfassung, self.lva_nummer)
 
 
 @dataclass
@@ -58,6 +68,8 @@ class ImportErgebnis:
     geloescht: int = 0
     unveraendert: int = 0
     neue_lvas: list[str] = field(default_factory=list)
+    freie_zeitraeume: int = 0
+    entfernte_lvas: list[str] = field(default_factory=list)
     betroffene_wochen: set[date] = field(default_factory=set)
     neu_geplante_wochen: list[date] = field(default_factory=list)
 
@@ -156,50 +168,57 @@ def parse_ical(daten: bytes | str) -> list[TissTermin]:
                 ort=str(komponente.get("LOCATION", "")).strip() or None,
                 beschreibung=beschreibung or None,
                 zusammenfassung=zusammenfassung,
+                lva_typ=typ_kuerzel,
             )
         )
     return termine
 
 
-def _finde_oder_erzeuge_lva(session: Session, termin: TissTermin, cache: dict, ergebnis: ImportErgebnis) -> Lva:
-    semester = semester_von(termin.start)
-    schluessel = termin.lva_nummer or termin.lva_titel
-    if (schluessel, semester) in cache:
-        return cache[(schluessel, semester)]
-    lva = session.scalar(select(Lva).where(Lva.schluessel == schluessel, Lva.semester == semester))
-    if lva is None:
-        anzahl = session.query(Lva).count()
-        lva = Lva(
-            schluessel=schluessel,
-            nummer=termin.lva_nummer,
-            titel=termin.lva_titel,
-            semester=semester,
-            farbe=STANDARD_FARBEN[anzahl % len(STANDARD_FARBEN)],
-        )
-        session.add(lva)
-        session.flush()
-        ergebnis.neue_lvas.append(f"{termin.lva_nummer or ''} {termin.lva_titel}".strip())
-    elif (
-        lva.nummer
-        and termin.typ != TYP_PRUEFUNG
-        and len(termin.lva_titel) > len(lva.titel)
-    ):
-        lva.titel = termin.lva_titel  # längeren (vollständigeren) Titel bevorzugen
-    cache[(schluessel, semester)] = lva
-    return lva
+def _freien_zeitraum_abgleichen(session: Session, neu: TissTermin, ergebnis: ImportErgebnis) -> None:
+    von, bis = zeitraum_aus_termin(neu.start, neu.ende)
+    zeitraum = session.scalar(select(FreierZeitraum).where(FreierZeitraum.tiss_uid == neu.uid))
+    if zeitraum is None:
+        session.add(FreierZeitraum(tiss_uid=neu.uid, bezeichnung=freier_name(neu.zusammenfassung), von=von, bis=bis))
+        ergebnis.freie_zeitraeume += 1
+    elif (zeitraum.von, zeitraum.bis) != (von, bis):
+        zeitraum.von, zeitraum.bis = von, bis
+    else:
+        return
+    tag = von
+    while tag <= bis:  # freie Tage ändern die Wochenplanung
+        ergebnis.betroffene_wochen.add(wochenbeginn(tag))
+        tag += timedelta(days=7)
+    ergebnis.betroffene_wochen.add(wochenbeginn(bis))
 
 
 def importiere_termine(session: Session, tiss_termine: list[TissTermin]) -> ImportErgebnis:
-    """Gleicht die Termine aus dem Feed mit der Datenbank ab (nur Änderungen werden übernommen)."""
+    """Gleicht die Termine aus dem Feed mit der Datenbank ab (nur Änderungen werden übernommen).
+
+    VO, UE und Gruppen derselben LVA landen als Teile unter einer LVA; Ferien und Feiertage
+    werden zu freien Zeiträumen statt zu LVAs.
+    """
     ergebnis = ImportErgebnis()
     bestehend = {t.tiss_uid: t for t in session.scalars(select(Termin).where(Termin.quelle == "tiss"))}
-    lva_cache: dict = {}
+    freie_bisher = {z.tiss_uid: z for z in session.scalars(select(FreierZeitraum).where(FreierZeitraum.quelle == "tiss"))}
+    cache: dict = {}
     jetzt = datetime.now()
 
     for neu in tiss_termine:
-        lva = _finde_oder_erzeuge_lva(session, neu, lva_cache, ergebnis)
+        if neu.ist_frei:
+            _freien_zeitraum_abgleichen(session, neu, ergebnis)
+            freie_bisher.pop(neu.uid, None)
+            if (alt := bestehend.pop(neu.uid, None)) is not None:
+                session.delete(alt)  # früher als Termin einer Schein-LVA gespeichert
+            continue
+
+        treffer = finde_oder_erzeuge_teil(
+            session, neu.lva_nummer, neu.lva_titel, neu.lva_typ, semester_von(neu.start), cache
+        )
+        if treffer.neue_lva:
+            ergebnis.neue_lvas.append(f"{neu.lva_nummer or ''} {treffer.lva.titel}".strip())
         werte = {
-            "lva_id": lva.id,
+            "lva_id": treffer.lva.id,
+            "teil_id": treffer.teil.id,
             "typ": neu.typ,
             "titel": neu.zusammenfassung,
             "start": neu.start,
@@ -222,7 +241,7 @@ def importiere_termine(session: Session, tiss_termine: list[TissTermin]) -> Impo
         else:
             ergebnis.unveraendert += 1
 
-    # Termine, die nicht mehr im Feed stehen, löschen – aber nur im Zeitraum, den der Feed abdeckt
+    # Was nicht mehr im Feed steht, löschen – aber nur im Zeitraum, den der Feed abdeckt
     if tiss_termine:
         frueheste = min(t.start for t in tiss_termine)
         for verschwunden in bestehend.values():
@@ -230,9 +249,33 @@ def importiere_termine(session: Session, tiss_termine: list[TissTermin]) -> Impo
                 ergebnis.betroffene_wochen.add(wochenbeginn(verschwunden.start.date()))
                 session.delete(verschwunden)
                 ergebnis.geloescht += 1
+        for zeitraum in freie_bisher.values():
+            if zeitraum.von >= frueheste.date():
+                ergebnis.betroffene_wochen.add(wochenbeginn(zeitraum.von))
+                session.delete(zeitraum)
+        session.flush()
+        ergebnis.entfernte_lvas = verwaiste_lvas_entfernen(session)
 
     session.commit()
     return ergebnis
+
+
+def verwaiste_lvas_entfernen(session: Session) -> list[str]:
+    """Löscht LVAs ohne Termine, Unterlagen, Lernblöcke und TUWEL-Kurs.
+
+    So verschwinden LVAs, von denen man sich abgemeldet hat (oder die aus einem falschen Feed stammen),
+    sobald ihre Termine nicht mehr im Feed stehen. Was noch irgendwo verwendet wird, bleibt.
+    """
+    verwaist = session.scalars(select(Lva).where(
+        ~exists().where(Termin.lva_id == Lva.id),
+        ~exists().where(Dokument.lva_id == Lva.id),
+        ~exists().where(Lernblock.lva_id == Lva.id),
+        ~exists().where(TuwelKurs.lva_id == Lva.id),
+    )).all()
+    namen = [f"{l.nummer or ''} {l.titel} ({l.semester})".strip() for l in verwaist]
+    for lva in verwaist:
+        session.delete(lva)
+    return namen
 
 
 def lade_feed(url: str) -> bytes:

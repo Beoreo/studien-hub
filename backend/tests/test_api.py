@@ -31,7 +31,7 @@ def test_import_und_lvas(client, tiss_ics):
     ergebnis = importieren(client, tiss_ics)
     assert ergebnis["neu"] == 5
     lvas = client.get("/api/lvas").json()
-    assert {l["nummer"] for l in lvas} == {"185.A91", "104.271", "104.272"}
+    assert {l["nummer"] for l in lvas} == {"185.A91", "104.271", "104.272"}  # Algebra VO und UE sind eigene LVAs
     ep1 = next(l for l in lvas if l["nummer"] == "185.A91")
     assert ep1["anzahl_termine"] == 3
 

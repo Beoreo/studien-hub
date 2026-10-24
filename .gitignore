@@ -11,3 +11,10 @@ frontend/dist/
 .env
 .env.*
 !.env.example
+
+# Screenshots der Design-Prüfung (zeigen persönliche Termine)
+screenshots/
+
+# Paketieren (build.ps1)
+/build/
+/dist/

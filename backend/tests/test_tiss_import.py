@@ -60,11 +60,17 @@ def test_import_ordnet_lvas_zu(session, tiss_ics):
     ergebnis = importiere_ical(session, tiss_ics)
     assert (ergebnis.neu, ergebnis.geaendert, ergebnis.geloescht) == (5, 0, 0)
     lvas = {l.nummer: l for l in session.scalars(select(Lva))}
+    # Algebra VO 104.271 und UE 104.272 sind eigene LVAs mit Typ
     assert set(lvas) == {"185.A91", "104.271", "104.272"}
     assert lvas["185.A91"].titel == "Einführung in die Programmierung 1"
     assert lvas["185.A91"].semester == "2026W"
     assert len(lvas["185.A91"].termine) == 3  # zwei VU-Termine + Prüfung
-    assert len({l.farbe for l in lvas.values()}) == 3  # unterschiedliche Farben
+    assert [(t.nummer, t.typ) for t in lvas["185.A91"].teile] == [("185.A91", "VU")]  # Prüfung im selben Teil
+    vo, ue = lvas["104.271"], lvas["104.272"]
+    assert (vo.typ, ue.typ, vo.titel == ue.titel) == ("VO", "UE", True)
+    assert [(t.nummer, t.typ) for t in ue.teile] == [("104.272", "UE")]
+    assert {t.teil.nummer for t in ue.termine} == {"104.272"}
+    assert len({l.farbe for l in lvas.values()}) == 3  # unterschiedliche Farben je LVA
 
 
 def test_erneuter_import_uebernimmt_nur_aenderungen(session, tiss_ics):
@@ -113,3 +119,32 @@ def test_abgabe_wird_erkannt():
     termin = parse_ical(ics)[0]
     assert termin.typ == "ABGABE"
     assert termin.lva_nummer == "185.A91"
+
+
+def _feed(*ereignisse: tuple[str, str, str]) -> str:
+    teile = [
+        f"BEGIN:VEVENT\nUID:{uid}\nDTSTART;TZID=Europe/Vienna:{start}\nDTEND;TZID=Europe/Vienna:{start[:9]}120000\n"
+        f"SUMMARY:{summary}\nEND:VEVENT\n"
+        for uid, summary, start in ereignisse
+    ]
+    return "BEGIN:VCALENDAR\nVERSION:2.0\n" + "".join(teile) + "END:VCALENDAR\n"
+
+
+def test_lvas_ohne_termine_im_feed_werden_entfernt(session):
+    from app.models import Dokument
+
+    mathe = ("m1", "104.297 VO Mathematik 1", "20261005T100000")
+    feed = _feed(mathe, ("e1", "185.A91 VU Einführung in die Programmierung 1", "20261006T100000"),
+                 ("a1", "104.271 VO Algebra und Diskrete Mathematik", "20261007T100000"))
+    importiere_ical(session, feed, neu_planen=False)
+    assert session.query(Lva).count() == 3
+    algebra = session.scalar(select(Lva).where(Lva.titel.like("Algebra%")))
+    session.add(Dokument(lva_id=algebra.id, tuwel_kurs_id=1, tuwel_cm_id=1, schluessel="a", dateiname="a.pdf",
+                         typ="pdf", quelle_url="u"))
+    session.commit()
+
+    # abgemeldet bzw. falscher Feed: nur noch Mathe im Feed
+    ergebnis = importiere_ical(session, _feed(mathe), neu_planen=False)
+    assert ergebnis.entfernte_lvas == ["185.A91 Einführung in die Programmierung 1 (2026W)"]
+    titel = {l.titel for l in session.scalars(select(Lva))}
+    assert titel == {"Mathematik 1", "Algebra und Diskrete Mathematik"}  # Algebra hat noch Unterlagen

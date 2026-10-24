@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, WOCHENTAGE } from '../api.js'
+import { Button, Dialog, Eingabe, Feld, Hinweis, IconButton, Karte, Kontrolle, SeitenKopf, Tabelle } from '../ui.jsx'
+import './ArbeitEinstellungen.css'
 
 const STANDARD_REGEL = {
   stunden_pro_woche: 20,
@@ -20,42 +22,37 @@ const STANDARD_REGEL = {
   lern_min_block_minuten: 45,
   lern_max_block_minuten: 120,
   lern_tage: [0, 1, 2, 3, 4, 5],
-  ects_warnschwelle: 0.5,
+  ects_faktor: 0.7,
+  lernphase_wochen: 2,
 }
 
-// Lernblöcke werden vor der Arbeitszeit geplant (Schätzwerte je LVA im Reiter „LVAs“)
+// Lernblöcke kommen nach der Arbeitszeit; der Bedarf je LVA aus den ECTS (Ziel und Regler im Reiter „LVAs“)
 function LernEinstellungen({ regel, setRegel }) {
   const zahl = (feld) => (e) => setRegel({ ...regel, [feld]: Number(e.target.value) })
   return (
-    <fieldset className="kriterien">
-      <legend>Lernblöcke</legend>
-      <p className="hinweis">
-        Neue Unterlagen erzeugen Lernbedarf. Lernblöcke liegen bald nach Erscheinen des Stoffs und vor der nächsten Übung oder
-        Abgabe; die Arbeitszeit wird erst danach verteilt. Passt nicht beides, zeigt der Vorschlag einen Konflikt.
-      </p>
-      <label>
-        Lerntage
-        <TagAuswahl werte={regel.lern_tage} onChange={(lern_tage) => setRegel({ ...regel, lern_tage })} />
-      </label>
-      <label>
-        Lernblock mindestens / höchstens (Minuten)
-        <span className="zeile">
-          <input type="number" min="15" step="15" value={regel.lern_min_block_minuten} onChange={zahl('lern_min_block_minuten')} />
-          <input type="number" min="15" step="15" value={regel.lern_max_block_minuten} onChange={zahl('lern_max_block_minuten')} />
-        </span>
-      </label>
-      <label>
-        Warnung, wenn der Wochenbedarf einer LVA so stark vom ECTS-Soll abweicht (%)
-        <input
-          type="number"
-          min="5"
-          max="500"
-          step="5"
-          value={Math.round(regel.ects_warnschwelle * 100)}
-          onChange={(e) => setRegel({ ...regel, ects_warnschwelle: Number(e.target.value) / 100 })}
-        />
-      </label>
-    </fieldset>
+    <Karte titel="Lernblöcke" icon="lernen" aufklappbar>
+      <div className="formular">
+        <p className="leise klein">
+          Reihenfolge: Pflichttermine, Arbeit, Lernen bis zum Wochenbedarf, der Rest ist Freizeit. Lernbedarf je LVA = (ECTS ×
+          25 h − Präsenz) × ECTS-Faktor × Ziel; reicht die Zeit nicht, wird zuerst bei LVAs ohne nahe Prüfung gekürzt.
+        </p>
+        <TagAuswahl titel="Lerntage" werte={regel.lern_tage} onChange={(lern_tage) => setRegel({ ...regel, lern_tage })} />
+        <div className="formular-zeile">
+          <Feld label="Lernblock mindestens (min)">
+            <Eingabe type="number" breite="schmal" min="15" step="15" value={regel.lern_min_block_minuten} onChange={zahl('lern_min_block_minuten')} />
+          </Feld>
+          <Feld label="höchstens (min)">
+            <Eingabe type="number" breite="schmal" min="15" step="15" value={regel.lern_max_block_minuten} onChange={zahl('lern_max_block_minuten')} />
+          </Feld>
+        </div>
+        <Feld label="ECTS-Faktor" hilfe="ECTS sind meist zu hoch angesetzt; 0,7 = 70 % der ECTS-Stunden.">
+          <Eingabe type="number" breite="schmal" min="0.1" max="2" step="0.05" value={regel.ects_faktor} onChange={zahl('ects_faktor')} />
+        </Feld>
+        <Feld label="Lernen vor jeder Prüfung (Wochen)" hilfe="Standard; je LVA im Reiter „Prüfungen“ änderbar. Nur dann gibt es Lernblöcke.">
+          <Eingabe type="number" breite="schmal" min="0" max="20" step="1" value={regel.lernphase_wochen} onChange={zahl('lernphase_wochen')} />
+        </Feld>
+      </div>
+    </Karte>
   )
 }
 
@@ -72,40 +69,42 @@ function EntspannteWoche({ regel, setRegel }) {
   const zahl = (feld) => (e) => setRegel({ ...regel, [feld]: Number(e.target.value) })
   const gewicht = (feld) => (e) => setRegel({ ...regel, gewichte: { ...regel.gewichte, [feld]: Number(e.target.value) } })
   return (
-    <fieldset className="kriterien">
-      <legend>Entspannte Woche</legend>
-      <p className="hinweis">
-        Der Vorschlag bewertet jede mögliche Verteilung und wählt die beste. Diese Grenzen gelten immer:
-      </p>
-      <label>
-        Höchstens Uni + Arbeit pro Tag (Stunden)
-        <input type="number" min="1" max="24" step="0.5" value={regel.max_tag_stunden} onChange={zahl('max_tag_stunden')} />
-      </label>
-      <label>
-        Lernfenster nach Vorlesungen und vor Prüfungen/Abgaben (Minuten)
-        <input type="number" min="0" step="15" value={regel.lernfenster_minuten} onChange={zahl('lernfenster_minuten')} />
-      </label>
-      <label>
-        Voller Unitag ab (Stunden) – danach kein Arbeitsblock am Abend
-        <input type="number" min="0" max="24" step="0.5" value={regel.voller_unitag_stunden} onChange={zahl('voller_unitag_stunden')} />
-      </label>
-      <label>
-        Komplett freie Tage pro Woche (mindestens)
-        <input type="number" min="0" max="7" step="1" value={regel.min_freie_tage} onChange={zahl('min_freie_tage')} />
-      </label>
-      <p className="hinweis">Gewichtung – wie wichtig ist dir …</p>
-      {KRITERIEN.map((k) => (
-        <label key={k.feld} className="regler" title={k.hilfe}>
-          <span>
-            {k.name} <span className="hinweis">({k.hilfe})</span>
-          </span>
-          <span className="zeile">
-            <input type="range" min="0" max="10" step="1" value={regel.gewichte[k.feld]} onChange={gewicht(k.feld)} />
-            <output>{regel.gewichte[k.feld]}</output>
-          </span>
-        </label>
-      ))}
-    </fieldset>
+    <Karte titel="Verteilung und Gewichtung" aufklappbar>
+      <div className="formular">
+        <p className="leise klein">Der Vorschlag wählt die beste Verteilung; diese Grenzen gelten immer.</p>
+        <div className="formular-zeile">
+          <Feld label="Höchstens Uni + Arbeit pro Tag (h)">
+            <Eingabe type="number" breite="schmal" min="1" max="24" step="0.5" value={regel.max_tag_stunden} onChange={zahl('max_tag_stunden')} />
+          </Feld>
+          <Feld label="Freie Tage pro Woche (mind.)">
+            <Eingabe type="number" breite="schmal" min="0" max="7" step="1" value={regel.min_freie_tage} onChange={zahl('min_freie_tage')} />
+          </Feld>
+        </div>
+        <Feld label="Lernfenster (Minuten)" hilfe="Nach Vorlesungen und vor Prüfungen/Abgaben frei gehalten.">
+          <Eingabe type="number" breite="schmal" min="0" step="15" value={regel.lernfenster_minuten} onChange={zahl('lernfenster_minuten')} />
+        </Feld>
+        <Feld label="Voller Unitag ab (Stunden)" hilfe="Danach kein Arbeitsblock am Abend.">
+          <Eingabe type="number" breite="schmal" min="0" max="24" step="0.5" value={regel.voller_unitag_stunden} onChange={zahl('voller_unitag_stunden')} />
+        </Feld>
+        <h3 className="arbeit-unter">Gewichtung: wie wichtig ist dir …</h3>
+        {KRITERIEN.map((k) => (
+          <Feld key={k.feld} label={k.name} hilfe={k.hilfe}>
+            <span className="arbeit-regler">
+              <input
+                type="range"
+                className="eingabe"
+                min="0"
+                max="10"
+                step="1"
+                value={regel.gewichte[k.feld]}
+                onChange={gewicht(k.feld)}
+              />
+              <output>{regel.gewichte[k.feld]}</output>
+            </span>
+          </Feld>
+        ))}
+      </div>
+    </Karte>
   )
 }
 
@@ -123,60 +122,71 @@ function FreieTage({ werte, onChange }) {
   }
 
   return (
-    <div>
-      {werte.length > 0 && (
-        <table className="freie-tage">
-          <tbody>
-            {werte.map((f, i) => (
-              <tr key={i}>
-                <td>
-                  {f.jaehrlich ? formatiere(f.von).replace(/\d{4}$/, '') : formatiere(f.von)}
-                  {f.bis && f.bis !== f.von && <> – {f.jaehrlich ? formatiere(f.bis).replace(/\d{4}$/, '') : formatiere(f.bis)}</>}
-                </td>
-                <td>{f.bezeichnung || 'frei'}</td>
-                <td>{f.jaehrlich && 'jährlich'}</td>
-                <td>
-                  <button type="button" className="klein" onClick={() => onChange(werte.filter((_, j) => j !== i))}>
-                    entfernen
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <span className="zeile">
-        <input type="date" value={neu.von} onChange={setze('von')} title="von" />
-        <input type="date" value={neu.bis} min={neu.von} onChange={setze('bis')} title="bis (optional)" />
-        <input value={neu.bezeichnung} onChange={setze('bezeichnung')} placeholder="z. B. Urlaub" />
-      </span>
-      <span className="zeile">
-        <label className="inline">
-          <input type="checkbox" checked={neu.jaehrlich} onChange={setze('jaehrlich')} />
-          jedes Jahr (z. B. 24.12.)
-        </label>
-        <button type="button" className="klein" onClick={hinzufuegen} disabled={!neu.von}>
-          hinzufügen
-        </button>
-      </span>
-    </div>
+    <Karte titel={werte.length > 0 ? `Freie Tage (${werte.length})` : 'Freie Tage'} icon="frei" aufklappbar>
+      <div className="formular">
+        <p className="leise klein">Feiertage in Österreich sind automatisch gesperrt; hier kommen weitere Tage ohne Arbeitszeit dazu.</p>
+        {werte.length > 0 && (
+          <Tabelle>
+            <tbody>
+              {werte.map((f, i) => (
+                <tr key={i}>
+                  <td>
+                    {f.jaehrlich ? formatiere(f.von).replace(/\d{4}$/, '') : formatiere(f.von)}
+                    {f.bis && f.bis !== f.von && <> – {f.jaehrlich ? formatiere(f.bis).replace(/\d{4}$/, '') : formatiere(f.bis)}</>}
+                  </td>
+                  <td>{f.bezeichnung || 'frei'}</td>
+                  <td className="leise">{f.jaehrlich && 'jährlich'}</td>
+                  <td className="zahl">
+                    <IconButton
+                      icon="loeschen"
+                      ton="verwerfen"
+                      klein
+                      label="Freien Tag entfernen"
+                      onClick={() => onChange(werte.filter((_, j) => j !== i))}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Tabelle>
+        )}
+        <div className="formular-zeile">
+          <Feld label="Von">
+            <Eingabe type="date" breite="mittel" value={neu.von} onChange={setze('von')} />
+          </Feld>
+          <Feld label="Bis (optional)">
+            <Eingabe type="date" breite="mittel" value={neu.bis} min={neu.von} onChange={setze('bis')} />
+          </Feld>
+          <Feld label="Bezeichnung">
+            <Eingabe breite="mittel" value={neu.bezeichnung} onChange={setze('bezeichnung')} placeholder="z. B. Urlaub" />
+          </Feld>
+        </div>
+        <div className="reihe">
+          <Kontrolle label="jedes Jahr (z. B. 24.12.)" checked={neu.jaehrlich} onChange={setze('jaehrlich')} />
+          <Button klein icon="neu" onClick={hinzufuegen} disabled={!neu.von}>
+            Hinzufügen
+          </Button>
+        </div>
+      </div>
+    </Karte>
   )
 }
 
-function TagAuswahl({ werte, onChange }) {
+function TagAuswahl({ titel, werte, onChange }) {
   return (
-    <span className="tage">
-      {WOCHENTAGE.map((name, i) => (
-        <label key={i}>
-          <input
-            type="checkbox"
+    <fieldset className="arbeit-tage">
+      <legend className="feld-beschriftung">{titel}</legend>
+      <div className="reihe">
+        {WOCHENTAGE.map((name, i) => (
+          <Kontrolle
+            key={i}
+            label={name}
             checked={werte.includes(i)}
             onChange={() => onChange(werte.includes(i) ? werte.filter((w) => w !== i) : [...werte, i].sort())}
           />
-          {name}
-        </label>
-      ))}
-    </span>
+        ))}
+      </div>
+    </fieldset>
   )
 }
 
@@ -207,79 +217,72 @@ function RegelFormular({ setMeldung }) {
       .catch((e) => setMeldung({ art: 'fehler', text: e.message }))
   }, [setMeldung])
 
-  if (!regel) return <p>Lade …</p>
+  if (!regel) return <p className="leise">Lade …</p>
   const setze = (feld) => (e) => setRegel({ ...regel, [feld]: e.target.type === 'number' ? Number(e.target.value) : e.target.value })
 
   const speichern = (e) => {
     e.preventDefault()
     api
       .regelSpeichern({ ...regel, arbeitgeber: regel.arbeitgeber || null })
-      .then(() => setMeldung({ art: 'ok', text: 'Arbeitsregel gespeichert. Im Kalender „Arbeitszeit vorschlagen“ klicken.' }))
+      .then(() => setMeldung({ art: 'ok', text: 'Arbeitsregel gespeichert. Im Kalender „Woche planen“ klicken.' }))
       .catch((e) => setMeldung({ art: 'fehler', text: e.message }))
   }
 
   return (
-    <form className="formular" onSubmit={speichern}>
-      <h2>Arbeitsregel</h2>
-      <p className="hinweis">
-        Die Wochenstunden sind die Gesamtstunden. Bestätigte und fixe Blöcke werden abgezogen, der Rest wird automatisch in
-        freie Lücken verteilt.
-      </p>
-      <label>
-        Stunden pro Woche
-        <input type="number" min="0" max="80" step="0.25" value={regel.stunden_pro_woche} onChange={setze('stunden_pro_woche')} />
-      </label>
-      <label>
-        Mögliche Tage
-        <TagAuswahl werte={regel.tage} onChange={(tage) => setRegel({ ...regel, tage })} />
-      </label>
-      <label>
-        Bevorzugte Tage
-        <TagAuswahl werte={regel.bevorzugte_tage} onChange={(t) => setRegel({ ...regel, bevorzugte_tage: t })} />
-      </label>
-      <label>
-        Frühester Beginn
-        <input type="time" step="900" value={regel.fruehester_beginn} onChange={setze('fruehester_beginn')} />
-      </label>
-      <label>
-        Spätestes Ende
-        <input type="time" step="900" value={regel.spaetestes_ende} onChange={setze('spaetestes_ende')} />
-      </label>
-      <label>
-        Mindestlänge pro Block (Minuten)
-        <input type="number" min="15" step="15" value={regel.min_block_minuten} onChange={setze('min_block_minuten')} />
-      </label>
-      <label>
-        Maximallänge pro Block (Minuten)
-        <input type="number" min="15" step="15" value={regel.max_block_minuten} onChange={setze('max_block_minuten')} />
-      </label>
-      <label>
-        Puffer für den Weg (Minuten)
-        <input type="number" min="0" step="5" value={regel.puffer_minuten} onChange={setze('puffer_minuten')} />
-      </label>
-      <label>
-        Arbeitgeber
-        <input value={regel.arbeitgeber} onChange={setze('arbeitgeber')} />
-      </label>
+    <form className="stapel" onSubmit={speichern}>
+      <Karte titel="Wochenstunden und Zeitfenster" icon="arbeit">
+        <div className="formular">
+          <div className="formular-zeile">
+            <Feld label="Stunden pro Woche">
+              <Eingabe type="number" breite="schmal" min="0" max="80" step="0.25" value={regel.stunden_pro_woche} onChange={setze('stunden_pro_woche')} />
+            </Feld>
+            <Feld label="Arbeitgeber">
+              <Eingabe breite="mittel" value={regel.arbeitgeber} onChange={setze('arbeitgeber')} />
+            </Feld>
+          </div>
+          <p className="leise klein">Bestätigte und fixe Blöcke werden abgezogen, der Rest wird automatisch in freie Lücken verteilt.</p>
+          <TagAuswahl titel="Mögliche Tage" werte={regel.tage} onChange={(tage) => setRegel({ ...regel, tage })} />
+          <TagAuswahl titel="Bevorzugte Tage" werte={regel.bevorzugte_tage} onChange={(t) => setRegel({ ...regel, bevorzugte_tage: t })} />
+          <div className="formular-zeile">
+            <Feld label="Frühester Beginn">
+              <Eingabe type="time" breite="mittel" step="900" value={regel.fruehester_beginn} onChange={setze('fruehester_beginn')} />
+            </Feld>
+            <Feld label="Spätestes Ende">
+              <Eingabe type="time" breite="mittel" step="900" value={regel.spaetestes_ende} onChange={setze('spaetestes_ende')} />
+            </Feld>
+          </div>
+          <div className="formular-zeile">
+            <Feld label="Block mind. (min)">
+              <Eingabe type="number" breite="schmal" min="15" step="15" value={regel.min_block_minuten} onChange={setze('min_block_minuten')} />
+            </Feld>
+            <Feld label="Block höchstens (min)">
+              <Eingabe type="number" breite="schmal" min="15" step="15" value={regel.max_block_minuten} onChange={setze('max_block_minuten')} />
+            </Feld>
+            <Feld label="Puffer für den Weg (min)">
+              <Eingabe type="number" breite="schmal" min="0" step="5" value={regel.puffer_minuten} onChange={setze('puffer_minuten')} />
+            </Feld>
+          </div>
+        </div>
+      </Karte>
+      <FreieTage werte={regel.freie_tage} onChange={(freie_tage) => setRegel({ ...regel, freie_tage })} />
       <EntspannteWoche regel={regel} setRegel={setRegel} />
       <LernEinstellungen regel={regel} setRegel={setRegel} />
-      <div className="feld">
-        <span>Zusätzliche freie Tage</span>
-        <p className="hinweis">
-          Gesetzliche Feiertage in Österreich sind automatisch gesperrt. Hier kommen weitere Tage dazu, an denen keine
-          Arbeitszeit vorgeschlagen wird. Änderungen gelten nach „Speichern“.
-        </p>
-        <FreieTage werte={regel.freie_tage} onChange={(freie_tage) => setRegel({ ...regel, freie_tage })} />
+      <div className="knopf-gruppe">
+        <Button type="submit" variante="bestaetigen" icon="ok">
+          Speichern
+        </Button>
       </div>
-      <button type="submit">Speichern</button>
     </form>
   )
 }
+
+const uhrzeit = (d) => new Date(d).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })
 
 function SerienVerwaltung({ setMeldung }) {
   const heute = new Date().toISOString().slice(0, 10)
   const [serien, setSerien] = useState([])
   const [neu, setNeu] = useState({ wochentage: [], beginn: '08:00', ende: '12:00', von: heute, bis: heute, notiz: '' })
+  const [zuLoeschen, setZuLoeschen] = useState(null) // Serie, für die die Rückfrage offen ist
 
   const laden = () => api.serien().then(setSerien).catch((e) => setMeldung({ art: 'fehler', text: e.message }))
   useEffect(() => {
@@ -306,68 +309,102 @@ function SerienVerwaltung({ setMeldung }) {
   const setze = (feld) => (e) => setNeu({ ...neu, [feld]: e.target.value })
 
   return (
-    <div className="formular">
-      <h2>Fixe Arbeitszeiten (Serie)</h2>
-      <form onSubmit={anlegen}>
-        <label>
-          Wochentage
-          <TagAuswahl werte={neu.wochentage} onChange={(w) => setNeu({ ...neu, wochentage: w })} />
-        </label>
-        <label>
-          Von / bis (Uhrzeit)
-          <span className="zeile">
-            <input type="time" step="900" value={neu.beginn} onChange={setze('beginn')} />
-            <input type="time" step="900" value={neu.ende} onChange={setze('ende')} />
-          </span>
-        </label>
-        <label>
-          Zeitraum
-          <span className="zeile">
-            <input type="date" value={neu.von} onChange={setze('von')} />
-            <input type="date" value={neu.bis} onChange={setze('bis')} />
-          </span>
-        </label>
-        <label>
-          Notiz
-          <input value={neu.notiz} onChange={setze('notiz')} />
-        </label>
-        <button type="submit" disabled={neu.wochentage.length === 0}>
-          Serie anlegen
-        </button>
-      </form>
-
-      {serien.length > 0 && (
-        <table className="tabelle">
-          <thead>
-            <tr>
-              <th>Zeitraum</th>
-              <th>Blöcke</th>
-              <th>Notiz</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {serien.map((s) => (
-              <tr key={s.serie_id}>
-                <td>
-                  {datum(s.erster)} – {datum(s.letzter)}, {new Date(s.erster).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
-                </td>
-                <td className="mitte">{s.anzahl}</td>
-                <td>{s.notiz}</td>
-                <td>
-                  <button className="klein" onClick={() => loeschen(s, heute)}>
-                    ab heute löschen
-                  </button>{' '}
-                  <button className="klein gefahr" onClick={() => loeschen(s)}>
-                    ganz löschen
-                  </button>
-                </td>
+    <Karte titel="Feste Serien" icon="arbeit">
+      <div className="stapel">
+        {serien.length > 0 ? (
+          <Tabelle>
+            <thead>
+              <tr>
+                <th>Zeitraum</th>
+                <th className="mitte">Blöcke</th>
+                <th>Notiz</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {serien.map((s) => (
+                <tr key={s.serie_id}>
+                  <td>
+                    {datum(s.erster)} – {datum(s.letzter)}
+                    <div className="leise klein">ab {uhrzeit(s.erster)}</div>
+                  </td>
+                  <td className="mitte">{s.anzahl}</td>
+                  <td>{s.notiz}</td>
+                  <td className="zahl">
+                    <IconButton icon="loeschen" ton="verwerfen" klein label="Serie löschen" onClick={() => setZuLoeschen(s)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Tabelle>
+        ) : (
+          <p className="leise klein">Noch keine Serien. Feste Arbeitszeiten werden als fixe Blöcke angelegt.</p>
+        )}
+
+        <form className="formular" onSubmit={anlegen}>
+          <h3>Neue Serie</h3>
+          <TagAuswahl titel="Wochentage" werte={neu.wochentage} onChange={(w) => setNeu({ ...neu, wochentage: w })} />
+          <div className="formular-zeile">
+            <Feld label="Beginn">
+              <Eingabe type="time" breite="mittel" step="900" value={neu.beginn} onChange={setze('beginn')} />
+            </Feld>
+            <Feld label="Ende">
+              <Eingabe type="time" breite="mittel" step="900" value={neu.ende} onChange={setze('ende')} />
+            </Feld>
+          </div>
+          <div className="formular-zeile">
+            <Feld label="Von">
+              <Eingabe type="date" breite="mittel" value={neu.von} onChange={setze('von')} />
+            </Feld>
+            <Feld label="Bis">
+              <Eingabe type="date" breite="mittel" value={neu.bis} onChange={setze('bis')} />
+            </Feld>
+          </div>
+          <Feld label="Notiz">
+            <Eingabe value={neu.notiz} onChange={setze('notiz')} />
+          </Feld>
+          <div className="knopf-gruppe">
+            <Button type="submit" icon="neu" disabled={neu.wochentage.length === 0}>
+              Serie anlegen
+            </Button>
+          </div>
+        </form>
+      </div>
+
+      {zuLoeschen && (
+        <Dialog
+          titel="Serie löschen"
+          onSchliessen={() => setZuLoeschen(null)}
+          aktionen={
+            <>
+              <Button onClick={() => setZuLoeschen(null)}>Abbrechen</Button>
+              <Button
+                onClick={() => {
+                  loeschen(zuLoeschen, heute)
+                  setZuLoeschen(null)
+                }}
+              >
+                Ab heute löschen
+              </Button>
+              <Button
+                variante="verwerfen"
+                onClick={() => {
+                  loeschen(zuLoeschen)
+                  setZuLoeschen(null)
+                }}
+              >
+                Ganz löschen
+              </Button>
+            </>
+          }
+        >
+          <p>
+            {zuLoeschen.anzahl} Blöcke von {datum(zuLoeschen.erster)} bis {datum(zuLoeschen.letzter)}
+            {zuLoeschen.notiz && ` („${zuLoeschen.notiz}“)`}. Nur die künftigen oder alle Blöcke löschen?
+          </p>
+        </Dialog>
       )}
-    </div>
+    </Karte>
   )
 }
 
@@ -375,12 +412,13 @@ export default function ArbeitEinstellungen() {
   const [meldung, setMeldung] = useState(null)
   return (
     <div className="seite">
+      <SeitenKopf titel="Arbeitszeiten">
+        Wochenstunden und Zeitfenster festlegen; der Hub verteilt die Arbeit dann automatisch in die freien Lücken.
+      </SeitenKopf>
       {meldung && (
-        <div className={`meldung ${meldung.art}`} onClick={() => setMeldung(null)}>
-          {meldung.text}
-        </div>
+        <Hinweis ton={meldung.art === 'ok' ? 'erfolg' : 'fehler'} titel={meldung.text} onSchliessen={() => setMeldung(null)} />
       )}
-      <div className="zwei-spalten">
+      <div className="arbeit-spalten">
         <RegelFormular setMeldung={setMeldung} />
         <SerienVerwaltung setMeldung={setMeldung} />
       </div>

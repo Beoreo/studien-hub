@@ -1,6 +1,11 @@
 // Verbindung zum lokalen Studien-Hub. Jede schreibende Anfrage trägt den gemeinsamen Schlüssel.
 
-export class HubFehler extends Error {}
+export class HubFehler extends Error {
+  constructor(meldung, { schluesselFalsch = false } = {}) {
+    super(meldung)
+    this.schluesselFalsch = schluesselFalsch
+  }
+}
 
 export class Hub {
   constructor({ basis = 'http://127.0.0.1:8000', schluessel = '', fetchFn = (...a) => fetch(...a) } = {}) {
@@ -9,17 +14,19 @@ export class Hub {
     this.fetch = fetchFn
   }
 
-  async anfrage(pfad, optionen = {}) {
+  async anfrage(pfad, optionen = {}, bereich = 'tuwel') {
     let antwort
     try {
-      antwort = await this.fetch(`${this.basis}/api/tuwel${pfad}`, {
+      antwort = await this.fetch(`${this.basis}/api/${bereich}${pfad}`, {
         ...optionen,
         headers: { 'X-Studienhub-Schluessel': this.schluessel, ...(optionen.headers || {}) },
       })
     } catch {
-      throw new HubFehler('Studien-Hub nicht erreichbar – läuft er (npm run dev oder start.ps1)?')
+      throw new HubFehler('Studien-Hub nicht erreichbar – ist er gestartet (Symbol im Infobereich)?')
     }
-    if (antwort.status === 401) throw new HubFehler('Schlüssel falsch – im Hub unter „TUWEL“ kopieren und hier eintragen.')
+    if (antwort.status === 401) {
+      throw new HubFehler('Schlüssel passte nicht – er wird beim nächsten Lauf automatisch neu vom Hub geholt.', { schluesselFalsch: true })
+    }
     if (!antwort.ok) {
       let meldung = `Hub antwortet mit HTTP ${antwort.status}`
       try {
@@ -32,12 +39,39 @@ export class Hub {
     return antwort.json()
   }
 
-  json(pfad, daten) {
-    return this.anfrage(pfad, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(daten) })
+  json(pfad, daten, bereich = 'tuwel') {
+    const optionen = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(daten) }
+    return this.anfrage(pfad, optionen, bereich)
+  }
+
+  /** STEOP-Status aus TISS (tiss.js: steopAusHtml). */
+  steop(daten) {
+    return this.json('/steop', daten, 'tiss')
+  }
+
+  /** Welche TISS-Prüfungslisten und TUWEL-Kurse gelesen werden sollen: { lvas: [{ lva_id, name, nummern, semester, tuwel_kurse }] }. */
+  pruefungenAbruf() {
+    return this.anfrage('/abruf', {}, 'pruefungen')
+  }
+
+  /** Prüfungstermine einer Quelle (pruefungen.js). */
+  pruefungen(daten) {
+    return this.json('/sync', daten, 'pruefungen')
   }
 
   pruefen() {
     return this.anfrage('/sync/pruefen')
+  }
+
+  /** Schlüssel direkt vom Hub. Aus dem Browser lesen ihn nur die Oberfläche des Hubs und diese Erweiterung
+   *  (CORS im Hub erlaubt nur ihre feste ID); fremde Webseiten bekommen keine Antwort. */
+  async schluesselHolen() {
+    return (await this.anfrage('/einrichtung')).schluessel
+  }
+
+  /** Zeitpunkt, zu dem im Hub „Jetzt synchronisieren“ gewählt wurde (oder null). */
+  async anforderung() {
+    return (await this.anfrage('/sync/anforderung')).angefordert
   }
 
   kurse(kurse) {

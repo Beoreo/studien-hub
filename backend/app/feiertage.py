@@ -55,10 +55,26 @@ def freie_tage_expandieren(eintraege: Iterable[dict], von: date, bis: date) -> d
     return dict(sorted(ergebnis.items()))
 
 
-def gesperrte_tage(eintraege: Iterable[dict], von: date, bis: date) -> dict[date, str]:
-    """Feiertage und zusätzliche freie Tage zusammen; Feiertagsnamen haben Vorrang."""
+def tiss_freie_tage(session, von: date, bis: date) -> dict[date, str]:
+    """Vorlesungsfreie Zeiten aus TISS (Ferien, Rektorstag …) als einzelne Tage im Zeitraum."""
+    from sqlalchemy import select
+
+    from .models import FreierZeitraum
+
+    tage: dict[date, str] = {}
+    abfrage = select(FreierZeitraum).where(FreierZeitraum.von <= bis, FreierZeitraum.bis >= von)
+    for zeitraum in session.scalars(abfrage):
+        for tag in _tage(max(zeitraum.von, von), min(zeitraum.bis, bis)):
+            tage.setdefault(tag, zeitraum.bezeichnung)
+    return tage
+
+
+def gesperrte_tage(eintraege: Iterable[dict], von: date, bis: date, session=None) -> dict[date, str]:
+    """Feiertage, eigene freie Tage und (mit Session) vorlesungsfreie Zeiten aus TISS."""
     gesperrt = freie_tage_expandieren(eintraege, von, bis)
-    gesperrt.update(feiertage(von, bis))
+    if session is not None:
+        gesperrt.update(tiss_freie_tage(session, von, bis))
+    gesperrt.update(feiertage(von, bis))  # Feiertagsnamen haben Vorrang
     return dict(sorted(gesperrt.items()))
 
 

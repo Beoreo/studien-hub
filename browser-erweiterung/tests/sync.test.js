@@ -224,7 +224,8 @@ test('Hub-Client: Schlüssel im Kopf, verständliche Fehler', async () => {
   assert.equal(gesehen[0].kopf['X-Studienhub-Schluessel'], 'geheim')
 
   const falsch = new Hub({ fetchFn: async () => antwort({ detail: 'x' }, { status: 401 }) })
-  await assert.rejects(() => falsch.pruefen(), /Schlüssel falsch/)
+  // falscher Schlüssel: Fehler trägt die Markierung, damit der Hintergrund ihn vergisst und neu holt
+  await assert.rejects(() => falsch.pruefen(), (f) => f.schluesselFalsch && /Schlüssel passte nicht/.test(f.message))
   const weg = new Hub({ fetchFn: async () => Promise.reject(new TypeError('Failed to fetch')) })
   await assert.rejects(() => weg.pruefen(), /nicht erreichbar/)
   const konflikt = new Hub({ fetchFn: async () => antwort({ detail: 'Kurs ist keiner LVA zugeordnet' }, { status: 409 }) })

@@ -239,13 +239,17 @@ def test_lernzeit_vor_pruefung():
     assert all(not b.intervall.ueberschneidet(lernfenster) for b in v.bloecke)
 
 
-def test_vortag_einer_abgabe_behaelt_lernfenster_auch_wenn_knapp():
+def test_vortag_einer_abgabe_arbeit_geht_vor_wenn_knapp():
     abgabe = PlanTermin(dt(1, 23.75), dt(1, 23.75), "Übungsblatt 3", abgabe=True)
-    # Nur Montag möglich: dort darf höchstens Fenster (10 h) minus Lernfenster (2 h) gearbeitet werden
+    # Wochenstunden sind Pflicht: reicht der Platz nicht, fällt das Lernfenster am Vortag weg
     r = regeln(stunden_pro_woche=10, tage=frozenset({0}), max_block=8 * H, max_tag=10 * H)
     v = verteile_arbeitszeit(MONTAG, r, [abgabe], [])
-    assert v.verplant == 8 * H and v.fehlend == 2 * H
-    assert any("Lernzeit vor Abgabe Di" in b for b in v.begruendungen)
+    assert v.verplant > 8 * H  # mehr als Fenster (10 h) minus Lernfenster (2 h)
+    assert any("Lernzeit vor Prüfungen/Abgaben" in b for b in v.begruendungen)
+
+    # passen die Stunden auch so, bleibt das Lernfenster frei
+    v = verteile_arbeitszeit(MONTAG, regeln(**{**r.__dict__, "stunden_pro_woche": 6}), [abgabe], [])
+    assert v.verplant == 6 * H and any("Lernzeit vor Abgabe Di" in b for b in v.begruendungen)
 
 
 def test_kein_arbeitsblock_am_abend_nach_vollem_unitag():
@@ -289,3 +293,22 @@ def test_feste_regeln_gelten_auch_ohne_gewichte():
     r = regeln(fruehester_beginn=time(8), spaetestes_ende=time(20), max_block=8 * H, gewichte=null)
     v = verteile_arbeitszeit(MONTAG, r, termine, [])
     assert max(tageslast(v, termine).values()) <= 9 * H
+
+
+def test_zwei_bloecke_am_stueck_statt_loch_in_der_mitte():
+    # freier Freitag 7–18 Uhr, 8,5 h Arbeit, Blöcke höchstens 6 h: zwei Blöcke nur mit Pause dazwischen
+    r = regeln(stunden_pro_woche=8.5, tage=frozenset({4}), fruehester_beginn=time(7), spaetestes_ende=time(18),
+               max_block=6 * H, max_tag=9 * H, min_freie_tage=0)
+    v = verteile_arbeitszeit(MONTAG, r, [], [])
+    assert v.verplant == 8.5 * H
+    erster, zweiter = (b.intervall for b in v.bloecke)
+    assert zweiter.start - erster.ende == timedelta(minutes=30)  # kein Leerlauf
+
+
+def test_leerlauf_zaehlt_nur_ohne_uni_dazwischen():
+    from app.planung import Intervall, leerlauf
+
+    a, b = Intervall(dt(0, 7), dt(0, 9)), Intervall(dt(0, 12), dt(0, 16))
+    assert leerlauf([a, b], []) == timedelta(hours=2, minutes=30)
+    assert leerlauf([b, a], [Intervall(dt(0, 10), dt(0, 11))]) == timedelta(0)  # Uni dazwischen
+    assert leerlauf([a, Intervall(dt(0, 9.5), dt(0, 12))], []) == timedelta(0)  # nur die Pause

@@ -1,0 +1,38 @@
+/* MB Cloud: Tabellen mit Auswahl und Bearbeitung, nur Variablen aus design.css */
+
+.mbcloud .stapel .karte + .karte {
+  margin-top: var(--a1);
+}
+
+/* Titel aufklappbarer Karten bleibt neben dem Pfeil */
+.mbcloud details.karte > summary > span {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.mbcloud-lva {
+  min-width: calc(var(--a6) * 4);
+}
+
+.mbcloud-datei {
+  min-width: calc(var(--a6) * 5);
+}
+
+.mbcloud-eng {
+  gap: var(--a0) var(--a1);
+}
+
+.mbcloud-nowrap {
+  white-space: nowrap;
+  flex-wrap: nowrap;
+}
+
+.mbcloud-zahl.eingabe {
+  width: calc(var(--a6) + var(--a4));
+  min-height: var(--steuer-klein);
+}
+
+.mbcloud-umbruch,
+.mbcloud code {
+  overflow-wrap: anywhere;
+}

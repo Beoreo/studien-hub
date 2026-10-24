@@ -22,8 +22,8 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.config import PROJEKT_ORDNER, TUWEL_URL, tuwel_token  # noqa: E402
-from app.tuwel_token import schreibe_env_wert  # noqa: E402
+from app import geheimnisse  # noqa: E402
+from app.config import TUWEL_URL, tuwel_token  # noqa: E402
 
 APP_USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) MoodleMobile 4.4.0 (44000)"
 NUR_APP_UA = False  # per --nur-app-ua: jeder Aufruf mit Token nur mit App-User-Agent
@@ -135,9 +135,9 @@ def schritt3(http: httpx.Client, link_token: str | None) -> None:
     if link_token and link_token != gespeichert:
         # Den frischen Token aus dem Link sofort testen – ältere Tokens verwirft TUWEL offenbar
         if teste_token(http, "Token aus dem Link", link_token):
-            antwort = input("Diesen Token als TUWEL_TOKEN in der .env speichern? [j/N] ").strip().lower()
+            antwort = input("Diesen Token als TUWEL_TOKEN speichern? [j/N] ").strip().lower()
             if antwort in ("j", "ja", "y"):
-                schreibe_env_wert(PROJEKT_ORDNER / ".env", "TUWEL_TOKEN", link_token)
+                geheimnisse.setze("TUWEL_TOKEN", link_token)
                 print("Gespeichert.")
                 return  # der alte Wert ist überschrieben, ihn erneut zu testen wäre irreführend
         if gespeichert:

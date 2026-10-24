@@ -28,6 +28,7 @@ class Filter:
     markierungen: list[str] | None = None  # Termin muss mindestens eine davon tragen
     arbeit: str = ARBEIT_MIT
     vorschlaege: bool = True  # unbestätigte Arbeitsvorschläge einbeziehen
+    ausgeblendete: bool = False  # auch LVAs, die dieses Semester nicht besucht werden (lva_auswahl.py)
 
 
 def termin_hat_markierung(termin: Termin, markierung: str) -> bool:
@@ -51,6 +52,11 @@ def termine_filtern(session: Session, f: Filter) -> list[Termin]:
     if f.typen:
         abfrage = abfrage.where(Termin.typ.in_(f.typen))
     termine = list(session.scalars(abfrage).unique())
+    if not f.ausgeblendete:
+        from .lva_auswahl import ausgeblendete_lva_ids
+
+        ausgeblendet = ausgeblendete_lva_ids(session)
+        termine = [t for t in termine if t.lva_id not in ausgeblendet]
     if f.markierungen:
         termine = [t for t in termine if any(termin_hat_markierung(t, m) for m in f.markierungen)]
     return termine
@@ -90,6 +96,7 @@ def filter_aus_anfrage(
     markierung: str | None = Query(None, description="steop,anwesenheit,aufzeichnung"),
     arbeit: str = Query(ARBEIT_MIT, pattern="^(mit|ohne|nur)$"),
     vorschlaege: bool = Query(True),
+    ausgeblendete: bool = Query(False, description="auch ausgeblendete LVAs (nicht besucht) zeigen"),
 ) -> Filter:
     """FastAPI-Abhängigkeit: baut den Filter aus den Query-Parametern."""
     lva_ids = [int(x) for x in _liste(lva) or []] or None
@@ -102,4 +109,5 @@ def filter_aus_anfrage(
         markierungen=markierungen,
         arbeit=arbeit,
         vorschlaege=vorschlaege,
+        ausgeblendete=ausgeblendete,
     )

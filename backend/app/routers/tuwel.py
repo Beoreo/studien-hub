@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..config import ERWEITERUNG_ORDNER, UNTERLAGEN_ORDNER
 from ..db import get_session
-from ..lernaufwand import Korrektur, dokument_aufbereiten, grundaufwand_minuten, korrekturfaktor, lernparameter
+from ..lernaufwand import dokument_aufbereiten, grundaufwand_minuten, lernparameter
 from ..models import DOK_GEAENDERT, DOK_NEU, ZUORDNUNG_AUS, ZUORDNUNG_AUTO, ZUORDNUNG_MANUELL, Dokument, Lva, TuwelKurs
 from ..tuwel_sync import (
     Eintrag,
@@ -95,7 +95,7 @@ def kurs_out(k: TuwelKurs) -> dict:
         "kurzname": k.kurzname,
         "name": k.name,
         "lva_id": k.lva_id,
-        "lva_name": (k.lva.kurzname or k.lva.titel) if k.lva else None,
+        "lva_name": (k.lva.anzeigename) if k.lva else None,
         "lva_semester": k.lva.semester if k.lva else None,
         "zuordnung": k.zuordnung,
         "synchronisieren": soll_synchronisiert_werden(k),
@@ -220,12 +220,10 @@ def dokumente_auflisten(lva_id: int | None = None, session: Session = Depends(ge
     )
     if lva_id is not None:
         abfrage = abfrage.where(Dokument.lva_id == lva_id)
-    korrekturen: dict[int, Korrektur] = {}
-
     def geschaetzt(d: Dokument) -> int:
-        korrektur = korrekturen.setdefault(d.lva_id, korrekturfaktor(session, d.lva_id))
+        """Geschätzte Stoffmenge: gewichtet nur, welcher Stoff in einem Lernblock dran ist."""
         dokument_aufbereiten(d)
-        return round(grundaufwand_minuten(d, lernparameter(d.lva)) * korrektur.faktor)
+        return round(grundaufwand_minuten(d, lernparameter(d.lva)))
 
     liste = [
         {
@@ -242,6 +240,8 @@ def dokumente_auflisten(lva_id: int | None = None, session: Session = Depends(ge
             "sync_am": d.geaendert_am,  # wann der Hub die aktuelle Fassung bekommen hat
             # Ergebnis des letzten Sync-Laufs: neu oder geändert
             "neu_seit_sync": d.status in (DOK_NEU, DOK_GEAENDERT),
+            # Herkunft: offiziell (TUWEL) oder inoffiziell (MB Cloud der Fachschaft) mit Kategorie und Jahr
+            "quelle": d.quelle or "tuwel", "kategorie": d.kategorie, "jahr": d.jahr,
         }
         for d in session.scalars(abfrage)
     ]

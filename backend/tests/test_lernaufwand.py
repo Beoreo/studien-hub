@@ -1,4 +1,4 @@
-"""Schätzung des Lernaufwands, Korrektur aus Rückmeldungen, Lernbedarf je Woche und ECTS-Abgleich."""
+"""Stoffmenge je Unterlage, Prüfungen und Lernbedarf je Woche aus den ECTS (mit Datenbank)."""
 
 import zipfile
 from datetime import date, datetime, timedelta
@@ -8,16 +8,18 @@ from fpdf import FPDF
 
 import app.lernaufwand as lernaufwand
 from app.lernaufwand import (
-    Korrektur,
     bestimme_lernart,
+    gelernte_minuten,
     grundaufwand_minuten,
-    korrekturfaktor,
+    lerntage_verfuegbar,
+    lva_plandaten,
     offene_unterlagen,
+    pruefungen,
+    pruefungstermine,
     seiten_und_format,
-    semesterwochen,
     wochenbedarf,
 )
-from app.models import STANDARD_LERNPARAMETER, Dokument, Lernblock, Lva, Termin
+from app.models import STANDARD_LERNPARAMETER, Arbeitsregel, Dokument, FreierZeitraum, Lernblock, Lva, Pruefungstermin, Termin
 
 MONTAG = date(2026, 10, 5)
 
@@ -109,79 +111,132 @@ def unterlage(session, lva, ordner, name="folien1.pdf", seiten=30, quer=True, er
     return d
 
 
-def test_korrekturfaktor_lernt_aus_rueckmeldungen(session, lva):
-    assert korrekturfaktor(session, lva.id) == Korrektur(1.0, 0)
-    for _ in range(3):  # jeweils 60 min geplant, 120 min gebraucht
-        session.add(Lernblock(lva_id=lva.id, start=datetime(2026, 10, 5, 10), ende=datetime(2026, 10, 5, 11),
-                              tatsaechliche_minuten=120, erledigt=True, status="bestaetigt"))
+def semester(session, lva, wochen=10, pruefung: datetime | None = None):
+    """Je Woche 2 h VU ab MONTAG, optional ein Prüfungstermin aus TISS."""
+    for w in range(wochen):
+        start = datetime(2026, 10, 5, 10) + timedelta(weeks=w)
+        session.add(Termin(lva_id=lva.id, typ="VU", titel="VU", start=start, ende=start + timedelta(hours=2)))
+    if pruefung:
+        session.add(Termin(lva_id=lva.id, typ="PRUEFUNG", titel="Prüfung", start=pruefung, ende=pruefung + timedelta(hours=2)))
     session.commit()
-    k = korrekturfaktor(session, lva.id)
-    assert k.rueckmeldungen == 3 and k.faktor == pytest.approx((360 + 120) / (180 + 120), abs=0.01)  # 1,6
-    # ohne eingetragene Zeit zählt ein Block nicht
-    session.add(Lernblock(lva_id=lva.id, start=datetime(2026, 10, 6, 10), ende=datetime(2026, 10, 6, 11), erledigt=True))
-    session.commit()
-    assert korrekturfaktor(session, lva.id).rueckmeldungen == 3
 
 
-def test_offene_unterlagen_abzueglich_eingeplanter_zeit(session, lva, ordner):
-    a = unterlage(session, lva, ordner, "a.pdf", seiten=30)  # 60 min
-    unterlage(session, lva, ordner, "alt.pdf", seiten=30, erschienen=datetime(2026, 9, 1), cm=2)  # zu alt
-    b = unterlage(session, lva, ordner, "b.pdf", seiten=15, erschienen=datetime(2026, 9, 25), cm=3)  # Rückstand: 30 min
+def test_offene_unterlagen_auch_alter_stoff_abzueglich_abgedecktem(session, lva, ordner):
+    a = unterlage(session, lva, ordner, "a.pdf", seiten=30)  # 60 min Stoff
+    alt = unterlage(session, lva, ordner, "alt.pdf", seiten=30, erschienen=datetime(2026, 9, 1), cm=2)  # alt, aber offen
+    b = unterlage(session, lva, ordner, "b.pdf", seiten=15, erschienen=datetime(2026, 9, 25), cm=3)  # 30 min
+    unterlage(session, lva, ordner, "spaeter.pdf", seiten=15, erschienen=datetime(2026, 10, 20), cm=4)  # erscheint später
     session.add(Lernblock(lva_id=lva.id, start=datetime(2026, 10, 1, 10), ende=datetime(2026, 10, 1, 10, 20),
                           status="bestaetigt", zuteilung={str(b.id): 20}))
     session.commit()
     offen = {o.dokument_id: o.minuten for o in offene_unterlagen(session, MONTAG)}
-    assert offen == {a.id: 60, b.id: 10}
-    # Seitenzahl und Art wurden dabei einmalig bestimmt und gespeichert
+    assert offen == {a.id: 60, alt.id: 60, b.id: 10}
     session.refresh(a)
-    assert (a.seiten, a.lernart) == (30, "folien")
+    assert (a.seiten, a.lernart) == (30, "folien")  # einmalig bestimmt und gespeichert
 
 
-def test_wochenbedarf_mit_ects_abgleich(session, lva, ordner):
-    # 6 ECTS = 150 h; Termine über 10 Wochen -> Soll 15 h pro Woche
-    for woche in range(10):
-        start = datetime(2026, 10, 5, 10) + timedelta(weeks=woche)
-        session.add(Termin(lva_id=lva.id, typ="VU", titel="VU", start=start, ende=start + timedelta(hours=2)))
+def test_eigene_stoffmenge_je_unterlage(session, lva, ordner):
+    bericht = unterlage(session, lva, ordner, "jahresbericht.pdf", seiten=350, quer=False)
+    skript = unterlage(session, lva, ordner, "skript.pdf", seiten=10, quer=False, cm=2)
+    bericht.lern_minuten = 0  # Nachschlagematerial: nicht lernen
+    skript.lern_minuten = 25
     session.commit()
-    assert semesterwochen(session, lva) == 10
-
-    unterlage(session, lva, ordner, "skript.pdf", seiten=100, quer=False)  # 600 min
-    bedarf = wochenbedarf(session, MONTAG)[0]
-    assert (bedarf.unterlagen_minuten, bedarf.praesenz_minuten, bedarf.soll_minuten) == (600, 120, 900)
-    assert bedarf.warnung is None  # 12 h zu 15 h liegt innerhalb ±50 %
-
-    unterlage(session, lva, ordner, "skript2.pdf", seiten=200, quer=False, cm=2)  # +1200 min
-    bedarf = wochenbedarf(session, MONTAG)[0]
-    assert "deutlich über dem ECTS-Soll von 15,0 h (6 ECTS)" in bedarf.warnung
-    assert bedarf.warnung.startswith("EP1: 32,0 h diese Woche")
-
-    # ohne Unterlagen nur 2 h Präsenz: deutlich unter dem Soll
-    spaeter = wochenbedarf(session, MONTAG + timedelta(weeks=1))[0]
-    assert "unter" in spaeter.warnung
-    # strengere Schwelle
-    assert wochenbedarf(session, MONTAG, warnschwelle=0.1)[0].warnung
+    assert {o.dokument_id: o.minuten for o in offene_unterlagen(session, MONTAG)} == {skript.id: 25}
 
 
-def test_wochenbedarf_ohne_ects_ohne_warnung(session, lva, ordner):
-    lva.ects = None
+def pruefungstermin(session, lva, start, **kw):
+    termin = Pruefungstermin(lva_id=lva.id, start=start, **kw)
+    session.add(termin)
     session.commit()
-    unterlage(session, lva, ordner)
-    bedarf = wochenbedarf(session, MONTAG)[0]
-    assert bedarf.soll_minuten is None and bedarf.warnung is None
-    assert bedarf.unterlagen[0]["lernart"] == "folien" and bedarf.unterlagen[0]["minuten"] == 60
+    return termin
+
+
+def test_angemeldete_pruefungstermine_zusammen_mit_dem_feed(session, lva):
+    assert pruefungen(session, lva) == ()
+    pruefungstermin(session, lva, datetime(2026, 12, 10, 9), angemeldet=True)
+    pruefungstermin(session, lva, datetime(2027, 1, 29, 9), quelle="tuwel", extern_id="tuwel:1", angemeldet=True)
+    pruefungstermin(session, lva, datetime(2027, 3, 5, 9), quelle="tiss", extern_id="tiss:2")  # nur angeboten
+    assert pruefungstermine(session, lva) == [(datetime(2026, 12, 10, 9), "manuell"), (datetime(2027, 1, 29, 9), "tuwel")]
+    # Prüfung aus dem TISS-Feed am selben Tag ersetzt den Termin, andere bleiben
+    session.add(Termin(lva_id=lva.id, typ="PRUEFUNG", titel="Prüfung", start=datetime(2027, 1, 29, 14),
+                       ende=datetime(2027, 1, 29, 16)))
+    session.commit()
+    assert pruefungstermine(session, lva) == [(datetime(2026, 12, 10, 9), "manuell"), (datetime(2027, 1, 29, 14), "tiss")]
+    assert pruefungen(session, lva) == (datetime(2026, 12, 10, 9), datetime(2027, 1, 29, 14))
+
+
+def test_ohne_anmeldung_gilt_der_naechste_termin_als_vorschlag(session, lva):
+    a = pruefungstermin(session, lva, datetime(2026, 11, 20, 9), quelle="tiss", extern_id="tiss:a")
+    b = pruefungstermin(session, lva, datetime(2027, 1, 22, 9), quelle="tiss", extern_id="tiss:b")
+    assert pruefungstermine(session, lva, heute=date(2026, 10, 24)) == [(a.start, "vorschlag")]
+    assert pruefungstermine(session, lva, heute=date(2026, 12, 1)) == [(b.start, "vorschlag")]
+    a.angemeldet = b.angemeldet = False  # „bei keinem Termin angemeldet“
+    session.commit()
+    assert pruefungstermine(session, lva, heute=date(2026, 10, 24)) == []
+    b.angemeldet, b.tiss_angemeldet = None, True  # automatisch: TISS meldet die Anmeldung
+    session.commit()
+    assert pruefungstermine(session, lva, heute=date(2026, 10, 24)) == [(b.start, "tiss")]
+
+
+def test_plandaten_mit_mehreren_angemeldeten_pruefungen(session, lva):
+    semester(session, lva, wochen=10)
+    pruefungstermin(session, lva, datetime(2026, 11, 20, 9), angemeldet=True)
+    pruefungstermin(session, lva, datetime(2027, 1, 22, 9), angemeldet=True)
+    daten = lva_plandaten(session, lva, MONTAG)
+    assert daten.pruefungen == (date(2026, 11, 20), date(2027, 1, 22))
+    assert daten.ende_woche == date(2027, 1, 18)  # verteilt bis zur letzten Prüfung
+
+
+def test_plandaten_praesenz_semester_und_gelernte_zeit(session, lva):
+    semester(session, lva, wochen=10, pruefung=datetime(2026, 12, 16, 9))
+    session.add(Termin(lva_id=lva.id, typ="ABGABE", titel="Abgabe", start=datetime(2026, 10, 9, 23), ende=datetime(2026, 10, 9, 23)))
+    session.add_all([
+        Lernblock(lva_id=lva.id, start=datetime(2026, 10, 6, 14), ende=datetime(2026, 10, 6, 16), status="bestaetigt",
+                  tatsaechliche_minuten=60, erledigt=True),  # eingetragen: 60 statt 120 min
+        Lernblock(lva_id=lva.id, start=datetime(2026, 10, 13, 14), ende=datetime(2026, 10, 13, 15), status="bestaetigt"),
+    ])
+    session.commit()
+    d = lva_plandaten(session, lva, MONTAG + timedelta(weeks=2))
+    assert d.praesenz_minuten == 10 * 120  # ohne Prüfung und Abgabe
+    assert (d.erste_woche, d.letzte_woche, d.pruefungen) == (MONTAG, MONTAG + timedelta(weeks=9), (date(2026, 12, 16),))
+    assert d.ende_woche == date(2026, 12, 14)
+    assert d.erste_planwoche == MONTAG and d.gelernt_vorher == 60 + 60
+    assert gelernte_minuten(session.scalars(__import__("sqlalchemy").select(Lernblock)).first()) == 60
+
+
+def test_wochenbedarf_aus_ects_statt_aus_seiten(session, lva, ordner):
+    # 20 h Präsenz, Prüfung am Mittwoch der Woche 9; gelernt wird in den 9 Wochen davor und in der Prüfungswoche
+    semester(session, lva, wochen=10, pruefung=datetime(2026, 12, 9, 9))
+    for i in range(30):  # 30 Skripte mit 100 Seiten = 300 h geschätzter Stoff
+        unterlage(session, lva, ordner, f"s{i}.pdf", seiten=100, quer=False, cm=i + 1)
+    regel = Arbeitsregel(id=1, lernphase_wochen=9)
+    (bedarf, daten), = wochenbedarf(session, MONTAG, regel)
+    # (150 h − 20 h) × 0,7 × 0,8 = 72,8 h über 10 Wochen
+    assert bedarf.gesamt_minuten == round(130 * 60 * 0.56)
+    # ein Zehntel, etwas mehr: die Wochen mit Nationalfeiertag und Mariä Empfängnis haben einen Lerntag weniger
+    assert round(130 * 60 * 0.56 / 10) < bedarf.soll_minuten < round(130 * 60 * 0.56 / 9)
+    assert bedarf.pruefung == date(2026, 12, 9) and bedarf.lernphase
+    assert wochenbedarf(session, MONTAG) == []  # Standard 2 Wochen: Anfang Oktober noch kein Lernbedarf
+
+    regel = Arbeitsregel(id=1, stunden_pro_woche=10, ects_faktor=1.0, lernphase_wochen=9)
+    lva.ziel, lva.bedarf_faktor = "bestehen", 0.5
+    session.commit()
+    (bedarf, _), = wochenbedarf(session, MONTAG, regel)
+    assert bedarf.gesamt_minuten == round(130 * 60 * 1.0 * 0.6 * 0.5)
+
+
+def test_ferien_zaehlen_weniger(session, lva):
+    session.add(FreierZeitraum(tiss_uid="f", bezeichnung="Herbstferien", von=date(2026, 10, 12), bis=date(2026, 10, 18)))
+    session.commit()
+    anteile = lerntage_verfuegbar(None, MONTAG, MONTAG + timedelta(weeks=2), session)
+    assert anteile[MONTAG + timedelta(weeks=1)] == 0 and anteile[MONTAG + timedelta(weeks=2)] == 1
+    assert anteile[MONTAG] == 1
+
+
+def test_lva_ohne_termine_und_ohne_pruefung_hat_keinen_bedarf(session, lva):
+    assert wochenbedarf(session, MONTAG) == []
 
 
 def test_abschnittsname_macht_noch_kein_uebungsblatt():
     assert bestimme_lernart(dok(dateiname="Präsentation_HTL.pdf", abschnitt="Übungen"), quer=True) == "folien"
     assert bestimme_lernart(dok(dateiname="Angabe_Welle.pdf", abschnitt="Übungen"), quer=False) == "uebung"
-
-
-def test_eigene_lernzeit_je_unterlage(session, lva, ordner):
-    bericht = unterlage(session, lva, ordner, "jahresbericht.pdf", seiten=350, quer=False)  # geschätzt 35 h
-    skript = unterlage(session, lva, ordner, "skript.pdf", seiten=10, quer=False, cm=2)
-    bericht.lern_minuten = 0  # Nachschlagematerial: nicht lernen
-    skript.lern_minuten = 25  # eigene Einschätzung statt 60 min
-    session.commit()
-    offen = {o.dokument_id: o.minuten for o in offene_unterlagen(session, MONTAG)}
-    assert offen == {skript.id: 25}
-    assert wochenbedarf(session, MONTAG)[0].unterlagen_minuten == 25

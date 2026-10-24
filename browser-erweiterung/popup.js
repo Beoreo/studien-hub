@@ -38,6 +38,20 @@ async function zeigeZustand() {
   $('sync').disabled = zustand?.status === 'laeuft' && Date.now() - (zustand.aktualisiert || 0) < 120000
 }
 
+const STEOP_TEXT = { true: 'abgeschlossen', false: 'nicht abgeschlossen', null: 'nicht erkannt' }
+
+async function zeigeSteop() {
+  const { tissSteop } = await api.storage.local.get('tissSteop')
+  const box = $('steop')
+  if (!tissSteop) return
+  box.className = `zustand ${tissSteop.status === 'ok' ? 'ok' : 'fehler'}`
+  const teile = [`STEOP (TISS): ${STEOP_TEXT[tissSteop.abgeschlossen] ?? tissSteop.status}`]
+  if (tissSteop.erlaubte_ects != null) teile.push(`erlaubte Non-STEOP-ECTS ${tissSteop.erlaubte_ects}`)
+  if (tissSteop.steop_nummern) teile.push(`${tissSteop.steop_nummern} STEOP-LVAs`)
+  if (tissSteop.kriterien) teile.push(`${tissSteop.kriterien} Kriterien`)
+  box.textContent = `${teile.join(' · ')} · ${zeit(tissSteop.zeit)}${tissSteop.meldung ? ` – ${tissSteop.meldung}` : ''}`
+}
+
 async function ladeEinstellungen() {
   const { hubUrl, schluessel } = await api.storage.local.get(['hubUrl', 'schluessel'])
   $('hubUrl').value = hubUrl || 'http://127.0.0.1:8000'
@@ -59,7 +73,9 @@ $('speichern').addEventListener('click', async () => {
 
 api.storage.onChanged.addListener((aenderungen) => {
   if (aenderungen.zustand || aenderungen.letzterErfolg) zeigeZustand()
+  if (aenderungen.tissSteop) zeigeSteop()
 })
 
 ladeEinstellungen()
 zeigeZustand()
+zeigeSteop()

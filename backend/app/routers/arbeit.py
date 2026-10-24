@@ -9,14 +9,17 @@ from sqlalchemy.orm import Session
 
 from ..db import get_session
 from ..filter import zu_lokal
-from ..models import ART_FIX, STATUS_BESTAETIGT, Arbeitsblock, Arbeitsregel
+from ..models import ART_FIX, STATUS_BESTAETIGT, STATUS_VORSCHLAG, Arbeitsblock, Arbeitsregel
 from ..planung_service import (
     REGEL_ID,
     KeineRegelFehler,
+    alle_arbeitsvorschlaege_loeschen,
     bestaetige_woche,
     lade_regel,
+    rest_neu_planen,
     schlage_woche_vor,
     verwerfe_woche,
+    vorschlag_verwerfen,
 )
 from .lernen import lernblock_out
 from ..schemas import (
@@ -96,6 +99,9 @@ def block_aendern(block_id: int, daten: ArbeitsblockUpdate, session: Session = D
     if "start" in werte or "ende" in werte:
         block.status = STATUS_BESTAETIGT
     session.commit()
+    if {"start", "ende", "status"} & werte.keys():
+        rest_neu_planen(session, block.start.date())  # nur den Rest der Woche neu planen
+    session.refresh(block)
     return block
 
 
@@ -104,8 +110,12 @@ def block_loeschen(block_id: int, session: Session = Depends(get_session)):
     block = session.get(Arbeitsblock, block_id)
     if block is None:
         raise HTTPException(404, "Arbeitsblock nicht gefunden")
+    if block.status == STATUS_VORSCHLAG:
+        vorschlag_verwerfen(session, "arbeit", block)
+    tag = block.start.date()
     session.delete(block)
     session.commit()
+    rest_neu_planen(session, tag)
 
 
 @router.get("/serien", response_model=list[SerieOut])
@@ -188,6 +198,12 @@ def vorschlag_berechnen(
 @router.post("/bestaetigen")
 def vorschlaege_bestaetigen(woche: date = Query(...), session: Session = Depends(get_session)):
     return {"bestaetigt": bestaetige_woche(session, woche)}
+
+
+@router.post("/vorschlaege-loeschen")
+def alle_vorschlaege_loeschen(session: Session = Depends(get_session)):
+    """Löscht alle Arbeitszeit-Vorschläge aller Wochen; bestätigte und fixe Blöcke bleiben."""
+    return {"geloescht": alle_arbeitsvorschlaege_loeschen(session)}
 
 
 @router.post("/verwerfen")

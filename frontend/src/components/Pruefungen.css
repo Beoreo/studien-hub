@@ -1,0 +1,267 @@
+/* Prüfungen: Zeitstrahl und Termine je LVA – nur Variablen aus design.css */
+
+.pruefungen-seite p {
+  margin: 0;
+}
+
+.pruefungen-seite .karte + .karte {
+  margin-top: 0;
+}
+
+.pruefungen-raster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--a6) * 11)), 1fr));
+  gap: var(--a2);
+  align-items: start;
+}
+
+/* LVA-Karte mit Farbstreifen der LVA */
+.pruefung-lva {
+  border-left: var(--streifen) solid var(--lva);
+}
+
+.pruefung-auswahl .eingabe {
+  max-width: 100%;
+}
+
+/* Auswahl „Angemeldet bei“ und „Lernen ab … Wochen“ nebeneinander, schmal untereinander */
+.pruefung-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--a2);
+}
+
+.pruefung-kopf .pruefung-auswahl {
+  flex: 1 1 calc(var(--a6) * 5);
+  min-width: 0;
+}
+
+.pruefung-lernwochen {
+  flex: 0 0 auto;
+}
+
+.pruefung-tabelle td {
+  vertical-align: top;
+}
+
+.pruefung-termin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a0);
+  min-width: 0;
+}
+
+.pruefung-zeit {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--a1);
+}
+
+.pruefung-aktionen {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.pruefung-felder {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--a6) * 3), 1fr));
+  gap: var(--a2);
+}
+
+/* --- Zeitstrahl: waagrecht, auf schmalen Bildschirmen senkrecht ---------------------------------- */
+
+.zeitstrahl {
+  --marke: var(--punkt);
+  --text-breite: calc(var(--a6) * 2.5);
+  position: relative;
+  height: calc(var(--a6) * 5);
+  margin: 0 calc(var(--text-breite) / 2);
+}
+
+.zeitstrahl-linie {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: var(--rand-breite) solid var(--rand-feld);
+}
+
+.zeitstrahl-abstand {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--pos) * 100%);
+  transform: translate(-50%, -50%);
+  padding: 0 var(--a0);
+  background: var(--hintergrund);
+  color: var(--text-leise);
+  font-size: var(--groesse-klein);
+  white-space: nowrap;
+}
+
+.zeitstrahl-punkt {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--pos) * 100%);
+  width: 0;
+  height: 0;
+}
+
+.zeitstrahl-marke {
+  --lva: var(--text);
+  position: absolute;
+  width: var(--marke);
+  height: var(--marke);
+  left: calc(var(--marke) / -2);
+  top: calc(var(--marke) / -2);
+  border-radius: 50%;
+  background: var(--lva);
+  box-shadow: 0 0 0 calc(var(--rand-breite) * 2) var(--hintergrund);
+}
+
+.zeitstrahl-marke.heute {
+  background: var(--hintergrund);
+  border: calc(var(--rand-breite) * 2) solid var(--primaer);
+}
+
+.zeitstrahl-text {
+  position: absolute;
+  left: 0;
+  width: var(--text-breite);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--a0);
+  text-align: center;
+}
+
+.zeitstrahl-punkt.oben .zeitstrahl-text {
+  bottom: var(--a2);
+  flex-direction: column-reverse;
+}
+
+.zeitstrahl-punkt.unten .zeitstrahl-text {
+  top: var(--a2);
+}
+
+.zeitstrahl-punkt.erster .zeitstrahl-text {
+  transform: translateX(calc(var(--text-breite) / -4));
+}
+
+.zeitstrahl-punkt.letzter .zeitstrahl-text {
+  transform: translateX(calc(var(--text-breite) / -4 * 3));
+}
+
+.zeitstrahl-datum {
+  font-size: var(--groesse-klein);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.zeitstrahl-eintrag {
+  --lva: var(--rand-feld);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--a0);
+  max-width: 100%;
+  padding: 0 var(--a0);
+  border-left: var(--streifen) solid var(--lva);
+  border-radius: var(--radius);
+  background: var(--flaeche);
+  font-size: var(--groesse-klein);
+}
+
+.zeitstrahl-eintrag.pruefung {
+  font-weight: 600;
+}
+
+.zeitstrahl-eintrag.option {
+  background: var(--hintergrund);
+  color: var(--text-leise);
+  border-style: dashed;
+}
+
+.zeitstrahl-eintrag.anmeldung {
+  background: var(--hintergrund);
+}
+
+.zeitstrahl-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  /* Termine untereinander statt Tabelle: Zeit oben, darunter Anmeldung, Quelle und Aktionen */
+  .pruefung-tabelle thead {
+    display: none;
+  }
+
+  .pruefung-tabelle tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--a1);
+    padding: var(--a1) 0;
+    border-bottom: var(--rand-breite) solid var(--rand);
+  }
+
+  .tabelle.pruefung-tabelle td {
+    padding: 0;
+    border: 0;
+  }
+
+  .pruefung-tabelle td:first-child {
+    flex: 1 0 100%;
+  }
+
+  .pruefung-tabelle .pruefung-aktionen {
+    margin-left: auto;
+  }
+
+  .zeitstrahl {
+    --text-breite: auto;
+    height: calc(var(--anzahl) * var(--a6) * 1.5);
+    margin: var(--a2) 0;
+  }
+
+  .zeitstrahl-linie {
+    top: 0;
+    bottom: 0;
+    left: var(--a6);
+    right: auto;
+    border-top: 0;
+    border-left: var(--rand-breite) solid var(--rand-feld);
+  }
+
+  .zeitstrahl-abstand {
+    top: calc(var(--pos) * 100%);
+    left: var(--a6);
+  }
+
+  .zeitstrahl-punkt {
+    top: calc(var(--pos) * 100%);
+    left: var(--a6);
+  }
+
+  .zeitstrahl-text,
+  .zeitstrahl-punkt.oben .zeitstrahl-text,
+  .zeitstrahl-punkt.unten .zeitstrahl-text,
+  .zeitstrahl-punkt.erster .zeitstrahl-text,
+  .zeitstrahl-punkt.letzter .zeitstrahl-text {
+    top: 0;
+    bottom: auto;
+    left: var(--a3);
+    right: auto;
+    width: max-content;
+    max-width: calc(100vw - var(--a6) * 5);
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+    transform: translateY(-50%);
+  }
+}

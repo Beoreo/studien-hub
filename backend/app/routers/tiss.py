@@ -1,13 +1,18 @@
 """TISS-iCal-Link verwalten und Import auslösen (per Link oder Datei-Upload)."""
 
+import json
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import SessionLocal, get_session
-from ..models import lies_einstellung, setze_einstellung
-from ..schemas import ImportErgebnisOut, TissEinstellungen
+from ..lva_auswahl import steop_aus_tiss_speichern, steop_abgeschlossen
+from ..models import FreierZeitraum, lies_einstellung, setze_einstellung
+from ..planung_service import auswahl_geaendert, planung_aktuell_halten
+from ..schemas import ImportErgebnisOut, SteopTissIn, TissEinstellungen
+from .tuwel import pruefe_schluessel
 from ..tiss_import import ImportErgebnis, importiere_ical, lade_feed
 
 router = APIRouter(prefix="/api/tiss", tags=["TISS"])
@@ -24,6 +29,8 @@ def _ergebnis_out(ergebnis: ImportErgebnis, zeitpunkt: datetime) -> ImportErgebn
         geloescht=ergebnis.geloescht,
         unveraendert=ergebnis.unveraendert,
         neue_lvas=ergebnis.neue_lvas,
+        freie_zeitraeume=ergebnis.freie_zeitraeume,
+        entfernte_lvas=ergebnis.entfernte_lvas,
         neu_geplante_wochen=ergebnis.neu_geplante_wochen,
         letzter_import=zeitpunkt,
     )
@@ -41,16 +48,41 @@ def _importieren(session: Session, daten: bytes) -> ImportErgebnisOut:
     setze_einstellung(session, LETZTER_IMPORT, jetzt.isoformat(timespec="seconds"))
     setze_einstellung(session, LETZTER_FEHLER, None)
     session.commit()
+    planung_aktuell_halten(session)  # neue oder entfernte LVAs können die Kursauswahl ändern
     return _ergebnis_out(ergebnis, jetzt)
+
+
+@router.post("/steop", dependencies=[Depends(pruefe_schluessel)])
+def steop_aus_tiss(daten: SteopTissIn, session: Session = Depends(get_session)):
+    """STEOP-Status von der Browser-Erweiterung (TISS-Seite „STEOP Status“, mit der Browser-Sitzung gelesen)."""
+    uebernommen = steop_aus_tiss_speichern(session, daten.model_dump())
+    session.commit()
+    neu_geplant = auswahl_geaendert(session)
+    return {
+        "uebernommen": uebernommen,
+        "abgeschlossen": steop_abgeschlossen(session),
+        "steop_nummern": len(daten.steop_nummern),
+        "neu_geplante_wochen": neu_geplant,
+    }
 
 
 @router.get("/einstellungen")
 def einstellungen_lesen(session: Session = Depends(get_session)):
+    bericht = lies_einstellung(session, "lva_struktur_bericht")
     return {
         "ical_url": lies_einstellung(session, URL_SCHLUESSEL),
         "letzter_import": lies_einstellung(session, LETZTER_IMPORT),
         "letzter_fehler": lies_einstellung(session, LETZTER_FEHLER),
+        # einmaliger Bericht der Bereinigung (Ferien-Einträge, zusammengefasste LVAs, Sicherungskopie)
+        "bereinigung": json.loads(bericht) if bericht else None,
     }
+
+
+@router.get("/freie-zeitraeume")
+def freie_zeitraeume(session: Session = Depends(get_session)):
+    """Vorlesungsfreie Zeiten aus TISS – sperren Arbeit und Lernen wie Feiertage."""
+    abfrage = select(FreierZeitraum).order_by(FreierZeitraum.von)
+    return [{"id": z.id, "bezeichnung": z.bezeichnung, "von": z.von, "bis": z.bis} for z in session.scalars(abfrage)]
 
 
 @router.put("/einstellungen")

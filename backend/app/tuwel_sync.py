@@ -25,6 +25,7 @@ from typing import BinaryIO
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import geheimnisse
 from .config import UNTERLAGEN_ORDNER, ZEITZONE
 from .models import (
     DOK_GEAENDERT,
@@ -34,10 +35,12 @@ from .models import (
     ZUORDNUNG_AUTO,
     Dokument,
     Lva,
+    LvaTeil,
     TuwelKurs,
     lies_einstellung,
     setze_einstellung,
 )
+from .lva_struktur import gruppen_schluessel
 from .tiss_import import LVA_NUMMER
 
 # Einstellungs-Schlüssel
@@ -65,12 +68,19 @@ RESERVIERT = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(
 # --- Schlüssel für die Erweiterung ------------------------------------------------
 
 def erweiterungs_schluessel(session: Session, neu: bool = False) -> str:
-    """Gemeinsamer Schlüssel zwischen Hub und Erweiterung; wird beim ersten Abruf erzeugt."""
-    schluessel = lies_einstellung(session, SCHLUESSEL_ERWEITERUNG)
+    """Gemeinsamer Schlüssel zwischen Hub und Erweiterung (Windows-Anmeldeinformationsverwaltung); wird beim ersten
+    Abruf erzeugt. Ein früher in der Datenbank gespeicherter Schlüssel wird übernommen und dort gelöscht."""
+    gespeichert = geheimnisse.lies("ERWEITERUNG_SCHLUESSEL")
+    schluessel = gespeichert
+    alt = lies_einstellung(session, SCHLUESSEL_ERWEITERUNG)
+    if alt:
+        schluessel = schluessel or alt
+        setze_einstellung(session, SCHLUESSEL_ERWEITERUNG, None)
+        session.commit()
     if neu or not schluessel:
         schluessel = secrets.token_urlsafe(24)
-        setze_einstellung(session, SCHLUESSEL_ERWEITERUNG, schluessel)
-        session.commit()
+    if schluessel != gespeichert:
+        geheimnisse.setze("ERWEITERUNG_SCHLUESSEL", schluessel)
     return schluessel
 
 
@@ -87,12 +97,6 @@ def semester_aus_text(text: str) -> str | None:
     return None
 
 
-def _normalisiert(text: str) -> str:
-    text = LVA_NUMMER.sub(" ", text.casefold())
-    text = re.sub(r"\b(vo|ue|vu|se|pr|lu|ps|ex)\b|\(.*?\)|20\d\d\s*[ws]?\b|[ws]s\s*20\d\d", " ", text)
-    return re.sub(r"[^0-9a-zäöüß]+", " ", text).strip()
-
-
 def ordne_kurs_zu(session: Session, kurs: TuwelKurs) -> Lva | None:
     """Findet die LVA zu einem TUWEL-Kurs. Manuelle Zuordnungen bleiben unangetastet."""
     if kurs.zuordnung != ZUORDNUNG_AUTO:
@@ -101,26 +105,34 @@ def ordne_kurs_zu(session: Session, kurs: TuwelKurs) -> Lva | None:
     text = " ".join(filter(None, [kurs.kurzname, kurs.name, kurs.idnumber]))
     semester = semester_aus_text(text)
 
-    # In der LVA-Liste eingetragene TUWEL-Kurs-ID hat Vorrang – aber nur, wenn das Semester passt
-    # (sonst hielte ein einmal falsch gesetzter Wert den Kurs dauerhaft an der falschen LVA fest)
-    for lva in session.scalars(select(Lva).where(Lva.tuwel_kurs_id == kurs.id)):
+    # In der LVA-Liste eingetragene TUWEL-Kurs-ID (je Teil, bei älteren LVAs an der LVA) hat Vorrang –
+    # aber nur, wenn das Semester passt (sonst hielte ein falsch gesetzter Wert den Kurs an der falschen LVA fest)
+    eingetragen = [t.lva for t in session.scalars(select(LvaTeil).where(LvaTeil.tuwel_kurs_id == kurs.id))]
+    eingetragen += list(session.scalars(select(Lva).where(Lva.tuwel_kurs_id == kurs.id)))
+    for lva in eingetragen:
         if semester is None or lva.semester == semester:
             return lva
+
     nummern = LVA_NUMMER.findall(text)
-    kandidaten: list[Lva] = []
+    kandidaten: list[tuple[str | None, Lva]] = []  # (gefundene Nummer, LVA)
     if nummern:
-        kandidaten = list(session.scalars(select(Lva).where(Lva.nummer.in_(nummern))))
+        kandidaten = [(t.nummer, t.lva) for t in session.scalars(select(LvaTeil).where(LvaTeil.nummer.in_(nummern)))]
+        kandidaten += [(l.nummer, l) for l in session.scalars(select(Lva).where(Lva.nummer.in_(nummern)))]
     else:
-        titel = _normalisiert(kurs.name or kurs.kurzname)
+        titel = gruppen_schluessel(_ohne_semester(kurs.name or kurs.kurzname))
         if titel:
-            kandidaten = [l for l in session.scalars(select(Lva)) if _normalisiert(l.titel) == titel]
+            kandidaten = [(None, l) for l in session.scalars(select(Lva)) if gruppen_schluessel(l.titel) == titel]
     if semester:
-        kandidaten = [l for l in kandidaten if l.semester == semester]
+        kandidaten = [(n, l) for n, l in kandidaten if l.semester == semester]
     if not kandidaten:
         return None
     # Bei mehreren Treffern: zuerst die Reihenfolge der Nummern im Kursnamen, dann das neueste Semester
-    kandidaten.sort(key=lambda l: (nummern.index(l.nummer) if l.nummer in nummern else 99, _semester_rang(l.semester)))
-    return kandidaten[0]
+    kandidaten.sort(key=lambda k: (nummern.index(k[0]) if k[0] in nummern else 99, _semester_rang(k[1].semester)))
+    return kandidaten[0][1]
+
+
+def _ohne_semester(text: str) -> str:
+    return re.sub(r"20\d\d\s*[ws]?\b|[ws]s\s*20\d\d", " ", text, flags=re.IGNORECASE)
 
 
 def _semester_rang(semester: str) -> int:
@@ -161,7 +173,15 @@ def setze_kurs_lva(session: Session, kurs: TuwelKurs, lva: Lva | None) -> None:
     # Veraltete Verweise anderer LVAs auf diesen Kurs entfernen, damit sie nicht wieder greifen
     for andere in session.scalars(select(Lva).where(Lva.tuwel_kurs_id == kurs.id, Lva.id != lva.id)):
         andere.tuwel_kurs_id = None
-    if lva.tuwel_kurs_id is None:
+    for anderer in session.scalars(select(LvaTeil).where(LvaTeil.tuwel_kurs_id == kurs.id, LvaTeil.lva_id != lva.id)):
+        anderer.tuwel_kurs_id = None
+    if lva.teile:
+        # TUWEL hat je Teil (VO, UE …) einen eigenen Kurs: beim Teil mit passender Nummer vermerken
+        text = " ".join(filter(None, [kurs.kurzname, kurs.name, kurs.idnumber]))
+        for teil in lva.teile:  # mehrere Übungsgruppen teilen sich oft einen Kurs
+            if teil.nummer and teil.nummer in text and teil.tuwel_kurs_id is None:
+                teil.tuwel_kurs_id = kurs.id
+    elif lva.tuwel_kurs_id is None:
         lva.tuwel_kurs_id = kurs.id
     if alt is not None and alt.id != lva.id:
         dokumente_umziehen(session, kurs, alt, lva)
